@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Long-press launcher shortcuts. The capability bindings also expose them to Google Assistant
+     ("Hey Google, open camera in Hinterlay") once the app is published on Google Play. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="camera" android:enabled="true" android:icon="@drawable/ic_shortcut_camera"
+        android:shortcutShortLabel="@string/sc_camera_short" android:shortcutLongLabel="@string/sc_camera_long">
+        <intent android:action="android.intent.action.MAIN" android:targetPackage="@string/app_package" android:targetClass="com.hinterlay.app.MainActivity">
+            <extra android:name="hinterlay_action" android:value="camera" />
+        </intent>
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding android:key="feature" android:value="@array/feat_camera" />
+        </capability-binding>
+    </shortcut>
+    <shortcut
+        android:shortcutId="pick" android:enabled="true" android:icon="@drawable/ic_shortcut_image"
+        android:shortcutShortLabel="@string/sc_pick_short" android:shortcutLongLabel="@string/sc_pick_long">
+        <intent android:action="android.intent.action.MAIN" android:targetPackage="@string/app_package" android:targetClass="com.hinterlay.app.MainActivity">
+            <extra android:name="hinterlay_action" android:value="pick" />
+        </intent>
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding android:key="feature" android:value="@array/feat_pick" />
+        </capability-binding>
+    </shortcut>
+    <shortcut
+        android:shortcutId="library" android:enabled="true" android:icon="@drawable/ic_shortcut_library"
+        android:shortcutShortLabel="@string/sc_library_short" android:shortcutLongLabel="@string/sc_library_long">
+        <intent android:action="android.intent.action.MAIN" android:targetPackage="@string/app_package" android:targetClass="com.hinterlay.app.MainActivity">
+            <extra android:name="hinterlay_action" android:value="wallpaper" />
+        </intent>
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding android:key="feature" android:value="@array/feat_library" />
+        </capability-binding>
+    </shortcut>
+    <shortcut
+        android:shortcutId="stickers" android:enabled="true" android:icon="@drawable/ic_shortcut_sticker"
+        android:shortcutShortLabel="@string/sc_stickers_short" android:shortcutLongLabel="@string/sc_stickers_long">
+        <intent android:action="android.intent.action.MAIN" android:targetPackage="@string/app_package" android:targetClass="com.hinterlay.app.MainActivity">
+            <extra android:name="hinterlay_action" android:value="stickers" />
+        </intent>
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding android:key="feature" android:value="@array/feat_stickers" />
+        </capability-binding>
+    </shortcut>
+</shortcuts>

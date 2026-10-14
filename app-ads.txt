@@ -1,0 +1,2 @@
+# Upload to https://YOUR-DEVELOPER-WEBSITE/app-ads.txt (the site listed in Play Console)
+google.com, pub-1105737854661628, DIRECT, f08c47fec0942fa0

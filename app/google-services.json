@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "8942983086",
+    "project_id": "hinterlay",
+    "storage_bucket": "hinterlay.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:8942983086:android:fb6f030cae3c556ac95a3f",
+        "android_client_info": {
+          "package_name": "com.hinterlay.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAabCND3E4VsE-ZGLcp91DVsaRiqj7OUXw"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

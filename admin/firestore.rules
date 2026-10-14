@@ -1,0 +1,112 @@
+rules_version = '2';
+
+// Hinterlay Firestore rules.
+// >>> Set OWNER_EMAIL below to the Google account that administers the app. <<<
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function OWNER_EMAIL() { return 'REPLACE_ME@example.com'; }
+
+    // Owner = signed in with Google, verified email equal to OWNER_EMAIL.
+    // Anonymous-auth tokens carry no email, so they can never match.
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == OWNER_EMAIL()
+        && request.auth.token.email_verified == true;
+    }
+
+    function isSignedIn() { return request.auth != null; }
+
+    // Owner can do anything anywhere (read dashboards, manage content).
+    // More specific matches below only ADD permissions for clients.
+    match /{document=**} {
+      allow read, write: if isOwner();
+    }
+
+    // ---------- inspirations: public read, owner write ----------
+    match /inspirations/{id} {
+      allow read: if true;
+    }
+
+    // ---------- cards: public read, owner write ----------
+    match /cards/{id} {
+      allow read: if true;
+    }
+
+    // ---------- submissions: creations people chose to share for review ----------
+    // Create-only for the signed-in author (anonymous is fine). The author can read their own entry; the owner reviews them all.
+    match /submissions/{id} {
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && request.resource.data.keys().hasOnly(['uid', 'status', 'createdAt', 'caption', 'handle', 'contactOk', 'email', 'meta', 'imagePath', 'appVersion'])
+        && request.resource.data.caption is string && request.resource.data.caption.size() <= 200
+        && request.resource.data.handle is string && request.resource.data.handle.size() <= 40
+        && request.resource.data.meta is string && request.resource.data.meta.size() <= 30000;
+      allow read: if isSignedIn() && resource.data.uid == request.auth.uid;
+    }
+
+    // ---------- users/{installId}: installId == auth.uid ----------
+    // Clients may create/update ONLY their own doc. No client reads.
+    match /users/{id} {
+      function validUser(d) {
+        return d.keys().hasOnly(['firstSeen', 'lastSeen', 'appVersion', 'sdk', 'locale', 'opens'])
+          && d.keys().hasAll(['firstSeen', 'lastSeen', 'appVersion', 'sdk', 'locale', 'opens'])
+          && d.firstSeen is timestamp
+          && d.lastSeen is timestamp
+          && d.appVersion is string && d.appVersion.size() <= 40
+          && d.sdk is number && d.sdk >= 0 && d.sdk < 1000
+          && d.locale is string && d.locale.size() <= 20
+          && d.opens is number && d.opens >= 0;
+      }
+
+      allow create: if isSignedIn()
+        && request.auth.uid == id
+        && validUser(request.resource.data);
+
+      allow update: if isSignedIn()
+        && request.auth.uid == id
+        && validUser(request.resource.data)
+        // firstSeen is immutable; opens may only grow.
+        && request.resource.data.firstSeen == resource.data.firstSeen
+        && request.resource.data.opens >= resource.data.opens;
+    }
+
+    // ---------- stats/{yyyyMMdd}: increment-only counters ----------
+    // Clients cannot read or delete. Each listed field may grow by 0 or 1 per write.
+    match /stats/{day} {
+      function statFields() {
+        return ['opens', 'newUsers', 'exports', 'stickers', 'wallpapers', 'shares', 'inspirationUses', 'purchases'];
+      }
+
+      // Field f in a brand-new doc: absent, or a number in [0,1].
+      function createFieldOk(f) {
+        return !(f in request.resource.data)
+          || (request.resource.data[f] is number
+              && request.resource.data[f] >= 0 && request.resource.data[f] <= 1);
+      }
+
+      // Field f in an update: untouched, or number increased by 0..1 over old value (missing = 0).
+      function updateFieldOk(f) {
+        return !(f in request.resource.data.diff(resource.data).affectedKeys())
+          || (request.resource.data[f] is number
+              && request.resource.data[f] - resource.data.get(f, 0) >= 0
+              && request.resource.data[f] - resource.data.get(f, 0) <= 1);
+      }
+
+      allow create: if isSignedIn()
+        && day.matches('^[0-9]{8}$')
+        && request.resource.data.keys().hasOnly(statFields())
+        && createFieldOk('opens') && createFieldOk('newUsers') && createFieldOk('exports')
+        && createFieldOk('stickers') && createFieldOk('wallpapers') && createFieldOk('shares')
+        && createFieldOk('inspirationUses') && createFieldOk('purchases');
+
+      allow update: if isSignedIn()
+        && request.resource.data.keys().hasOnly(statFields())
+        && updateFieldOk('opens') && updateFieldOk('newUsers') && updateFieldOk('exports')
+        && updateFieldOk('stickers') && updateFieldOk('wallpapers') && updateFieldOk('shares')
+        && updateFieldOk('inspirationUses') && updateFieldOk('purchases');
+    }
+  }
+}

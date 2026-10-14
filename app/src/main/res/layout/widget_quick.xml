@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:background="@drawable/widget_bg" android:gravity="center" android:orientation="horizontal"
+    android:padding="12dp">
+    <LinearLayout android:id="@+id/w_photo" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+        android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/widget_chip" android:padding="9dp"
+            android:src="@drawable/ic_widget_image" android:contentDescription="@string/w_photo" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+            android:text="@string/w_photo" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_camera" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1.2"
+        android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="52dp" android:layout_height="52dp" android:background="@drawable/widget_camera_bg" android:padding="13dp"
+            android:src="@drawable/ic_widget_camera" android:contentDescription="@string/w_camera" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+            android:text="@string/w_camera" android:textColor="@color/widget_fg" android:textSize="11sp" android:textStyle="bold" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_library" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+        android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/widget_chip" android:padding="9dp"
+            android:src="@drawable/ic_widget_library" android:contentDescription="@string/w_library" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+            android:text="@string/w_library" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+    <LinearLayout android:id="@+id/w_sticker" android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="1"
+        android:gravity="center" android:orientation="vertical">
+        <ImageView android:layout_width="40dp" android:layout_height="40dp" android:background="@drawable/widget_chip" android:padding="9dp"
+            android:src="@drawable/ic_widget_sticker" android:contentDescription="@string/w_stickers" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="4dp"
+            android:text="@string/w_stickers" android:textColor="@color/widget_muted" android:textSize="11sp" />
+    </LinearLayout>
+</LinearLayout>

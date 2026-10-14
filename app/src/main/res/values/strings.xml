@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">Hinterlay</string>
+    <string name="wallpaper_description">Your Hinterlay creation with a 3D depth effect that follows your phone\'s tilt.</string>
+    <string name="w_photo">Photo</string>
+    <string name="w_camera">Camera</string>
+    <string name="w_library">Library</string>
+    <string name="w_stickers">Stickers</string>
+    <string name="w_recent">Latest creation</string>
+    <string name="w_empty">Tap to make your first one</string>
+    <string name="w_quick_desc">Open the camera, pick a photo or jump to your library in one tap.</string>
+    <string name="w_recent_desc">Your latest creation. Tap to edit it again.</string>
+    <string name="tile_label">Quick camera</string>
+    <string name="sc_camera_short">Camera</string>
+    <string name="sc_camera_long">Open the camera</string>
+    <string name="sc_pick_short">Pick photo</string>
+    <string name="sc_pick_long">Edit a photo from your gallery</string>
+    <string name="sc_library_short">Library</string>
+    <string name="sc_library_long">My creations</string>
+    <string name="sc_stickers_short">Stickers</string>
+    <string name="sc_stickers_long">WhatsApp stickers</string>
+</resources>

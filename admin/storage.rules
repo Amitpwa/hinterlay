@@ -1,0 +1,47 @@
+rules_version = '2';
+
+// Hinterlay Storage rules.
+// >>> Set OWNER_EMAIL below to the Google account that administers the app. <<<
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function OWNER_EMAIL() { return 'REPLACE_ME@example.com'; }
+
+    function isOwner() {
+      return request.auth != null
+        && request.auth.token.email == OWNER_EMAIL()
+        && request.auth.token.email_verified == true;
+    }
+
+    // Uploads must be images smaller than 10 MB.
+    function validImage() {
+      return request.resource.contentType.matches('image/.*')
+        && request.resource.size < 10 * 1024 * 1024;
+    }
+
+    // Inspiration artwork: public read, owner-only write.
+    match /inspirations/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isOwner() && validImage();
+      allow delete: if isOwner();
+    }
+
+    // Live-card artwork: same policy.
+    match /cards/{allPaths=**} {
+      allow read: if true;
+      allow create, update: if isOwner() && validImage();
+      allow delete: if isOwner();
+    }
+
+    // Creations people chose to share: only the author writes or reads their own folder; the owner reviews in the console.
+    match /submissions/{uid}/{file} {
+      allow create: if request.auth != null && request.auth.uid == uid && validImage();
+      allow read: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Everything else is closed.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

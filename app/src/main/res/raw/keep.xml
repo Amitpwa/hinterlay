@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Keep optional onboarding photos (looked up by name) when resources are shrunk. -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/onboard_*" />

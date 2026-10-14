@@ -1,0 +1,5 @@
+<resources>
+    <style name="Theme.Hinterlay" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#1F1F1F</item>
+    </style>
+</resources>

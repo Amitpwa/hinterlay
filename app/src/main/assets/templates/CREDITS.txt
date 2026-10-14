@@ -1,0 +1,9 @@
+﻿Photos used for Inspire templates (all CC0 / public domain, from Wikimedia Commons):
+balloon    - Kupono Kuwamura (CC0), "Hot Air Balloon (Unsplash).jpg"
+lighthouse - Holly's Coastal View (CC0), "Coast Lighthouse Architecture.jpg"
+surfer     - Austin Neill (CC0), "Surfer surfing the wave (Unsplash).jpg"
+cat        - Chinda Sam (CC0), "Brown-eyed cat (Unsplash).jpg"
+horse      - Melissa Regina (CC0), "White horse in Iceland (Unsplash).jpg"
+astronaut  - NASA (public domain), "Bruce McCandless II during EVA in 1984.jpg"
+flamingo   - Doug Swinson (CC0), "Flamingo Face (Unsplash).jpg"
+dog        - Rodion Kutsaev (CC0), "Earnest dog in the grass (Unsplash).jpg"

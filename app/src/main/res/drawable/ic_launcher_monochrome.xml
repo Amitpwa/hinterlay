@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Themed (single colour) launcher icon. The H and the peak used to be two solid shapes of the same colour, so they merged into
+  one blob. The H is now cut away just above the peak's edge (a small gap), so both shapes read clearly in any tint.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <group>
+        <!-- Everything above the peak's outline, moved up by the gap. -->
+        <clip-path android:pathData="M0,0H108V83L92,83L63,42L49,64L39,54L16,83H0Z" />
+        <path android:fillColor="#000000"
+            android:pathData="M31,27h11v17h24v-17h11v46h-11v-19h-24v19h-11z" />
+    </group>
+
+    <path android:fillColor="#000000"
+        android:pathData="M16,86L39,57L49,67L63,45L92,86Z" />
+</vector>

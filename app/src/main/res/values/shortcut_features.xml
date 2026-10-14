@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string-array name="feat_camera"><item>camera</item><item>open camera</item><item>take a photo</item><item>selfie</item></string-array>
+    <string-array name="feat_pick"><item>edit a photo</item><item>pick photo</item><item>choose photo</item></string-array>
+    <string-array name="feat_library"><item>library</item><item>my creations</item><item>gallery</item></string-array>
+    <string-array name="feat_stickers"><item>stickers</item><item>whatsapp stickers</item><item>make stickers</item></string-array>
+</resources>

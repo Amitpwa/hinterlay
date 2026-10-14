@@ -1,0 +1,170 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Hinterlay Admin</title>
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- Signed-out / denied screen -->
+<main id="gate" class="gate" hidden>
+  <div class="card gate-card">
+    <h1>Hinterlay Admin</h1>
+    <p id="gateMsg" class="muted">Owner-only console. Sign in with the owner Google account.</p>
+    <button id="signInBtn" class="btn primary">Sign in with Google</button>
+    <button id="demoBtn" class="btn primary" hidden>Preview with sample data</button>
+    <button id="gateSignOutBtn" class="btn" hidden>Sign out</button>
+  </div>
+</main>
+
+<!-- App shell -->
+<div id="shell" hidden>
+  <header class="topbar">
+    <div class="brand">Hinterlay <span class="muted">Admin</span></div>
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="dashboard" role="tab">Dashboard</button>
+      <button class="tab" data-tab="inspirations" role="tab">Inspirations</button>
+      <button class="tab" data-tab="submissions" role="tab">Submissions</button>
+      <button class="tab" data-tab="cards" role="tab">Live cards</button>
+      <button class="tab" data-tab="push" role="tab">Push</button>
+    </nav>
+    <div class="user"><span id="userEmail" class="muted"></span><button id="signOutBtn" class="btn small">Sign out</button></div>
+  </header>
+
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+  <main class="content">
+
+    <!-- DASHBOARD -->
+    <section id="tab-dashboard" class="panel">
+      <div class="row between">
+        <h2>Dashboard</h2>
+        <button id="refreshBtn" class="btn small">Refresh</button>
+      </div>
+
+      <div class="note">
+        <strong>What this panel cannot see:</strong> <em>uninstalls</em> and <em>store installs / listing views</em> are not stored in Firestore.
+        Read uninstalls from Firebase Analytics (event <code>app_remove</code>) and store installs, ratings and crash-free users from Google Play Console.
+        <div class="links">
+          <a id="lnkAnalytics" target="_blank" rel="noopener">Firebase Analytics</a>
+          <a id="lnkPlay" target="_blank" rel="noopener" href="https://play.google.com/console">Google Play Console</a>
+          <a id="lnkCrash" target="_blank" rel="noopener">Crashlytics</a>
+          <a id="lnkAdmob" target="_blank" rel="noopener" href="https://admob.google.com">AdMob</a>
+        </div>
+      </div>
+
+      <div id="dashStatus" class="muted">Loading...</div>
+      <div id="kpis" class="kpis"></div>
+
+      <div class="grid2">
+        <div class="card"><h3>New users per day (30d)</h3><div class="chartbox"><canvas id="chNew"></canvas></div></div>
+        <div class="card"><h3>Opens &amp; exports per day</h3><div class="chartbox"><canvas id="chOpens"></canvas></div></div>
+        <div class="card"><h3>Stickers, wallpapers, shares per day</h3><div class="chartbox"><canvas id="chFeat"></canvas></div></div>
+        <div class="card"><h3>Inspiration uses &amp; purchases per day</h3><div class="chartbox"><canvas id="chMon"></canvas></div></div>
+      </div>
+
+      <p class="muted small-text">Definitions: DAU/WAU/MAU = users whose <code>lastSeen</code> is within 1/7/30 days. D1/D7 retention is an estimate: share of users who first appeared 1/7+ days ago (last 30 days cohort) whose <code>lastSeen</code> is at least 1/7 days after <code>firstSeen</code>. Day buckets use this browser's local time zone.</p>
+    </section>
+
+    <!-- INSPIRATIONS -->
+    <section id="tab-inspirations" class="panel" hidden>
+      <h2>Inspirations</h2>
+      <form id="inspForm" class="card form" autocomplete="off">
+        <h3>New inspiration</h3>
+        <label>Image <input type="file" id="inspFile" accept="image/*"></label>
+        <label>Title <input id="inspTitle" required maxlength="80"></label>
+        <label>Caption <input id="inspCaption" maxlength="200"></label>
+        <label>Tags (comma separated) <input id="inspTags" placeholder="travel, minimal, neon"></label>
+        <fieldset>
+          <legend>Preset</legend>
+          <label>Text <input id="inspText" required maxlength="120"></label>
+          <div class="grid3">
+            <label>Font <select id="inspFont"></select></label>
+            <label>Color <input type="color" id="inspColor" value="#FFFFFF"></label>
+            <label>Text case <select id="inspCase"></select></label>
+          </div>
+          <div class="checks">
+            <label class="check"><input type="checkbox" id="inspBubble"> Bubble</label>
+            <label class="check"><input type="checkbox" id="inspBehind" checked> Behind subject</label>
+            <label class="check"><input type="checkbox" id="inspActive" checked> Active</label>
+          </div>
+        </fieldset>
+        <div class="row"><button class="btn primary" type="submit" id="inspSave">Publish inspiration</button><span id="inspMsg" class="muted"></span></div>
+      </form>
+      <div id="inspList" class="list"></div>
+    </section>
+
+    <!-- CARDS -->
+    <section id="tab-cards" class="panel" hidden>
+      <h2>Live cards</h2>
+      <form id="cardForm" class="card form" autocomplete="off">
+        <h3 id="cardFormTitle">New card</h3>
+        <input type="hidden" id="cardId">
+        <label>Title <input id="cardTitle" required maxlength="80"></label>
+        <label>Body <textarea id="cardBody" required rows="3" maxlength="400"></textarea></label>
+        <label>Image URL (optional) <input id="cardImage" type="url" placeholder="https://..."></label>
+        <label>...or upload image <input type="file" id="cardFile" accept="image/*"></label>
+        <div class="grid3">
+          <label>Button label (optional) <input id="cardCta" maxlength="30"></label>
+          <label>Button action <select id="cardAction"></select></label>
+          <label>URL (for "Open URL") <input id="cardUrl" type="url" placeholder="https://..."></label>
+        </div>
+        <div class="grid3">
+          <label>Priority (higher first) <input id="cardPriority" type="number" value="0" step="1"></label>
+          <label>Expires (optional) <input id="cardExpires" type="datetime-local"></label>
+          <label class="check pad"><input type="checkbox" id="cardActive" checked> Active</label>
+        </div>
+        <div class="row"><button class="btn primary" type="submit" id="cardSave">Save card</button><button class="btn" type="button" id="cardReset">Clear form</button><span id="cardMsg" class="muted"></span></div>
+      </form>
+      <div id="cardList" class="list"></div>
+    </section>
+
+    <!-- PUSH -->
+    <!-- SUBMISSIONS: creations people chose to share from the app -->
+    <section id="tab-submissions" class="panel" hidden>
+      <div class="row between">
+        <h2>Submissions</h2>
+        <button id="subRefresh" class="btn small">Refresh</button>
+      </div>
+      <p class="muted">Creations people sent from Inspire &gt; Share. Check each one against your creation standard: nothing unsafe or hateful, no one who looks like a minor or who has not agreed, no copyrighted or branded material. <b>Feature in Inspire</b> publishes it with the sender's credit. People who ticked "contact me" can be invited to the creator programme by email.</p>
+      <div id="subList" class="list"></div>
+    </section>
+
+    <section id="tab-push" class="panel" hidden>
+      <h2>Push notification</h2>
+      <div class="note">
+        Sends to FCM topic <code>all</code> through the callable Cloud Function <code>sendPush</code>.
+        <strong>Until that function is deployed</strong> (it needs the Blaze plan), use
+        <a id="lnkMsg" target="_blank" rel="noopener">Firebase Console &rsaquo; Messaging</a> instead: new campaign &rarr; Notification &rarr; target topic <code>all</code>,
+        and under "Additional options" add custom data keys <code>title</code>, <code>body</code>, <code>action</code>, <code>imageUrl</code> with the same values.
+      </div>
+      <form id="pushForm" class="card form" autocomplete="off">
+        <label>Title <input id="pushTitle" required maxlength="100"></label>
+        <label>Body <textarea id="pushBody" required rows="3" maxlength="500"></textarea></label>
+        <div class="grid2">
+          <label>Action <select id="pushAction"></select></label>
+          <label>URL (for "Open URL") <input id="pushUrl" type="url" placeholder="https://..."></label>
+        </div>
+        <label>Image URL (optional) <input id="pushImage" type="url" placeholder="https://..."></label>
+        <div class="row"><button class="btn primary" type="submit" id="pushSend">Send to everyone</button><span id="pushMsg" class="muted"></span></div>
+      </form>
+    </section>
+  </main>
+</div>
+
+<noscript><main class="gate"><div class="card gate-card"><h1>Hinterlay Admin</h1><p>This console needs JavaScript.</p></div></main></noscript>
+<script>
+  /* Browsers block ES modules on file:// pages, which shows up as a blank screen. Say so instead. */
+  if (location.protocol === "file:") {
+    document.addEventListener("DOMContentLoaded", function () {
+      document.body.innerHTML = '<main class="gate"><div class="card gate-card"><h1>Open via a local server</h1><p class="muted">Double-clicking index.html cannot run this console. Double-click <b>start-admin.cmd</b> in the admin folder, or run <code>python -m http.server 8099</code> here and open <code>http://localhost:8099</code>. Or deploy it with Firebase Hosting.</p></div></main>';
+    });
+  }
+</script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script type="module" src="app.js?v=2"></script>
+</body>
+</html>

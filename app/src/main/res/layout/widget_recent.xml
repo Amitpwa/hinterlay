@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent" android:background="@drawable/widget_bg"
+    android:id="@+id/w_root">
+    <ImageView android:id="@+id/w_image" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:scaleType="centerCrop" android:contentDescription="@string/w_recent" />
+    <LinearLayout android:id="@+id/w_empty" android:layout_width="match_parent" android:layout_height="match_parent"
+        android:gravity="center" android:orientation="vertical" android:padding="12dp">
+        <ImageView android:layout_width="44dp" android:layout_height="44dp" android:background="@drawable/widget_camera_bg" android:padding="11dp"
+            android:src="@drawable/ic_widget_camera" android:contentDescription="@string/w_camera" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp"
+            android:text="@string/w_empty" android:textColor="@color/widget_fg" android:textSize="12sp" android:gravity="center" />
+    </LinearLayout>
+</FrameLayout>
