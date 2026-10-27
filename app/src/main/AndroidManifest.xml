@@ -13,6 +13,9 @@
       permission on Android 10+ (minSdk 29).
     -->
 
+    <!-- Setting a static lock-screen image directly (the "Lock screen only" depth-clock option). -->
+    <uses-permission android:name="android.permission.SET_WALLPAPER" />
+
     <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <!-- Camera: asked only when the user opens the camera. Location (approximate): only to stamp a place name on a photo. -->
@@ -96,6 +99,20 @@
             <meta-data
                 android:name="android.service.wallpaper"
                 android:resource="@xml/tilt_wallpaper" />
+        </service>
+
+        <!-- Depth-effect lock-screen clock: a live clock tucked behind the photo's subject. -->
+        <service
+            android:name=".wallpaper.DepthClockWallpaperService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_WALLPAPER">
+            <intent-filter>
+                <action android:name="android.service.wallpaper.WallpaperService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.service.wallpaper"
+                android:resource="@xml/depth_clock_wallpaper" />
         </service>
 
         <!-- Camera that can appear over the lock screen (opened from the widget or the quick tile). -->

@@ -56,6 +56,7 @@ import com.hinterlay.app.editor.EditorViewModel
 import com.hinterlay.app.ui.editor.EditorScreen
 import com.hinterlay.app.ui.home.CreateTab
 import com.hinterlay.app.ui.screens.CreationsScreen
+import com.hinterlay.app.ui.screens.DepthClockScreen
 import com.hinterlay.app.ui.screens.InspireScreen
 import com.hinterlay.app.ui.screens.MoreScreen
 import com.hinterlay.app.ui.screens.OnboardingScreen
@@ -117,7 +118,7 @@ private fun Modifier.com_halftone(): Modifier = composed {
     this.halftone(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f), spacing = 12.dp, maxRadius = 1.7.dp, fromTop = false)
 }
 
-private enum class Screen { Home, Stickers, Support, Privacy, Onboarding, Camera }
+private enum class Screen { Home, Stickers, Support, Privacy, Onboarding, Camera, DepthClock }
 private enum class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
     Create("Create", Icons.Outlined.Home, Icons.Filled.Home),
     Inspire("Inspire", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome),
@@ -177,6 +178,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
             action == "inspire" -> { screen = Screen.Home; tab = Tab.Inspire }
             action == "wallpaper" -> { screen = Screen.Home; tab = Tab.Library }
             action == "stickers" -> screen = Screen.Stickers
+            action == "clock" -> screen = Screen.DepthClock
             action == "support" -> screen = Screen.Support
             action.startsWith("url:") -> runCatching {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.removePrefix("url:"))))
@@ -239,6 +241,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
             onPhoto = { uri -> screen = Screen.Home; editingUri = uri },
         )
         Screen.Privacy -> PrivacyScreen(onBack = { screen = Screen.Home })
+        Screen.DepthClock -> DepthClockScreen(onBack = { screen = Screen.Home })
         Screen.Support -> SupportScreen(onBack = { screen = Screen.Home })
         Screen.Stickers -> StickersScreen(
             onBack = { screen = Screen.Home },
@@ -280,6 +283,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
                             onOpenCreation = openCreation,
                             onSeeAll = { tab = Tab.Library },
                             onCardAction = route,
+                            onDepthClock = { screen = Screen.DepthClock },
                         )
                         Tab.Inspire -> InspireScreen(onUseIdea = { preset: Preset, picked: Uri ->
                             editor.pendingPreset = preset

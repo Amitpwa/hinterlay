@@ -35,6 +35,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddPhotoAlternate
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -69,6 +70,7 @@ fun CreateTab(
     onOpenCreation: (HistoryItem) -> Unit,
     onSeeAll: () -> Unit,
     onCardAction: (String) -> Unit,
+    onDepthClock: () -> Unit,
 ) {
     // System Photo Picker: user grants access to just the photo they choose. No storage permission.
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
@@ -130,6 +132,25 @@ fun CreateTab(
                     style = MaterialTheme.typography.bodyLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+            }
+
+            // Depth-clock wallpaper: a sibling creation mode, kept here on the main screen so it is found.
+            Box(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(24.dp))
+                    .border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(24.dp))
+                    .clickable(onClick = onDepthClock).padding(16.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Icon(Icons.Outlined.Schedule, contentDescription = null, modifier = Modifier.size(28.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Depth clock wallpaper", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "A live clock tucked behind your photo's subject",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
             }
             if (creations.isEmpty()) PrimaryButton(
                 text = "Choose a photo",

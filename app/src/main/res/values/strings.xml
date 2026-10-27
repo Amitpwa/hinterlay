@@ -1,6 +1,7 @@
 <resources>
     <string name="app_name">Hinterlay</string>
     <string name="wallpaper_description">Your Hinterlay creation with a 3D depth effect that follows your phone\'s tilt.</string>
+    <string name="depth_clock_description">A live clock tucked behind your photo\'s subject, with a gentle 3D tilt.</string>
     <string name="w_photo">Photo</string>
     <string name="w_camera">Camera</string>
     <string name="w_library">Library</string>
