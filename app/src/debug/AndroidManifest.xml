@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application>
+        <!-- DEBUG ONLY: lets `adb am start` open the AR screen before it is routed from MainActivity.
+             Not present in release builds (this is the debug source set). -->
+        <activity
+            android:name="com.hinterlay.app.ui.ar.ArDebugActivity"
+            android:exported="true"
+            android:label="AR (debug)"
+            android:theme="@style/Theme.Hinterlay" />
+    </application>
+</manifest>

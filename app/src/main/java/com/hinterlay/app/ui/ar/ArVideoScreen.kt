@@ -1,31 +1,39 @@
 package com.hinterlay.app.ui.ar
 
-// Real-world AR video — Part B, Phase 1 (AR foundation). See docs/PLAN_REALWORLD_AR.md.
+// Real-world AR video — Part B (Simulon-inspired). See docs/PLAN_REALWORLD_AR.md.
 //
-// A live ARCore scene (via SceneView 3.6.0) that tracks the real world, estimates its lighting
-// (Environmental HDR) and depth (occlusion), and lets you tap a detected surface to drop one test
-// 3D object that is lit by the real scene and hidden by closer real objects. Phase 2 replaces the
-// test sphere with Hinterlay's 3D text / the depth clock.
+// A live ARCore scene (SceneView 3.6.0) that tracks the real world, estimates its lighting
+// (Environmental HDR → Filament image-based lighting) and depth (occlusion), and lets you tap a
+// detected surface to place a real CGI glTF model — or Hinterlay's own 3D text — lit by the real
+// scene and hidden by closer real objects. Drag to move, pinch to scale, twist to rotate.
+//
+// Honest scope: ARCore Environmental HDR is a close on-device approximation of real-scene lighting,
+// NOT Simulon's neural physically-based relighting (research-grade, not replicable on-device). The
+// UI says so rather than overpromising.
 //
 // TODO(route): MainActivity routing is owned by the radial-menu session, so this screen is NOT wired
-// into navigation here. To route to it once both branches merge: add a `MainScreen` enum entry (e.g.
-// `ArVideo`) and a deep-link action — handle `hinterlay_action == "arvideo"` in MainActivity's intent
-// parsing — then render `ArVideoScreen(onBack = { screen = MainScreen.Home })`. The radial Create menu
-// already reserves a disabled "Real-world video" item (Part A) that should point here.
+// into navigation here. To route to it once both branches merge: add a `MainScreen` entry (e.g.
+// `ArVideo`) + deep-link action — handle `hinterlay_action == "arvideo"` in MainActivity — then
+// render `ArVideoScreen(onBack = { screen = MainScreen.Home })`. The radial Create menu already
+// reserves a disabled "Video" spoke that should point here. (A debug-only launcher,
+// ArDebugActivity in src/debug, hosts this screen for on-device testing before routing lands.)
 
 import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -37,6 +45,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,24 +69,48 @@ import io.github.sceneview.ar.arcore.isValid
 import io.github.sceneview.ar.getDescription
 import io.github.sceneview.ar.rememberARCameraNode
 import io.github.sceneview.ar.rememberARCameraStream
+import io.github.sceneview.math.Position
 import io.github.sceneview.rememberCollisionSystem
 import io.github.sceneview.rememberEngine
 import io.github.sceneview.rememberMaterialLoader
+import io.github.sceneview.rememberModelInstance
 import io.github.sceneview.rememberModelLoader
 import io.github.sceneview.rememberOnGestureListener
 import io.github.sceneview.rememberView
 
+// ── Placeable content ───────────────────────────────────────────────────────────────────────────
+
+private enum class ArKind { Model, Text }
+
+private data class ArItem(
+    val label: String,
+    val kind: ArKind,
+    /** Asset path for a glTF model (kind == Model). */
+    val asset: String? = null,
+    /** Target size in metres (longest edge) for a model. */
+    val scaleToUnits: Float = 0.3f,
+    /** Required visible credit for CC-BY assets; null for CC0 / on-brand content. */
+    val attribution: String? = null,
+)
+
+// Real CC0 / CC-BY PBR models (see assets/models/CREDITS.txt) + Hinterlay's own 3D text.
+private val arItems = listOf(
+    ArItem("Toy car", ArKind.Model, "models/toy_car.glb", scaleToUnits = 0.3f),
+    ArItem("Lamp", ArKind.Model, "models/iridescent_lamp.glb", scaleToUnits = 0.3f,
+        attribution = "IridescenceLamp © 2022 Wayfair, CC BY 4.0"),
+    ArItem("Chair", ArKind.Model, "models/sheen_chair.glb", scaleToUnits = 0.45f),
+    ArItem("Hinterlay", ArKind.Text),
+)
+
 /**
- * Real-world AR video screen (Phase 1 — foundation). Tracks the world, places one test object on tap.
+ * Real-world AR video screen. Tap a surface to place the selected 3D content, lit by the real scene.
  *
- * @param onBack leave the screen (navigation is owned elsewhere — see the TODO(route) above).
+ * @param onBack leave the screen (navigation is owned elsewhere — see TODO(route) above).
  */
 @Composable
 fun ArVideoScreen(onBack: () -> Unit) {
     val context = LocalContext.current
 
-    // 1) Device gate. checkAvailability() may briefly return a transient "checking" state the first
-    //    time; treat anything not-yet-known as "still deciding" and show a neutral loading note.
     val availability = remember {
         try {
             ArCoreApk.getInstance().checkAvailability(context)
@@ -87,24 +120,19 @@ fun ArVideoScreen(onBack: () -> Unit) {
     }
 
     if (availability.isTransient) {
-        ArMessage(
-            title = "Checking for AR…",
-            body = "One moment while we see whether this device supports AR.",
-            onBack = onBack,
-        )
+        ArMessage("Checking for AR…", "One moment while we see whether this device supports AR.", onBack)
         return
     }
     if (!availability.isSupported) {
         ArMessage(
-            title = "AR isn’t available here",
-            body = "Real-world video needs ARCore (Google Play Services for AR), which this device " +
-                "doesn’t support. The rest of Hinterlay works as usual.",
-            onBack = onBack,
+            "AR isn’t available here",
+            "Real-world video needs ARCore (Google Play Services for AR), which this device doesn’t " +
+                "support. The rest of Hinterlay works as usual.",
+            onBack,
         )
         return
     }
 
-    // 2) Camera gate — ARCore needs the camera; ask in context, same pattern as the camera screen.
     var granted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
@@ -114,17 +142,17 @@ fun ArVideoScreen(onBack: () -> Unit) {
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted = it }
     if (!granted) {
         ArMessage(
-            title = "Camera access needed",
-            body = "Real-world video uses the camera to anchor your creation in the room around you. " +
-                "Nothing is recorded until you choose to.",
-            onBack = onBack,
+            "Camera access needed",
+            "Real-world video uses the camera to anchor your creation in the room around you. Nothing " +
+                "is recorded until you choose to.",
+            onBack,
             actionLabel = "Allow camera",
             onAction = { ask.launch(Manifest.permission.CAMERA) },
         )
         return
     }
 
-    ArContent(onBack = onBack)
+    ArContent(onBack)
 }
 
 @Composable
@@ -136,22 +164,19 @@ private fun ArContent(onBack: () -> Unit) {
     val view = rememberView(engine)
     val collisionSystem = rememberCollisionSystem(view)
 
-    // Occlusion is OFF by default in ARCameraStream; turn it on so real objects can hide the virtual
-    // one. It quietly no-ops on devices without Depth support.
+    // Occlusion off by default in ARCameraStream; turn it on so real objects can hide the virtual one.
     val cameraStream = rememberARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
 
-    // A matte near-white PBL material. Low metallic + mid roughness reads as a clean neutral object
-    // that still picks up the real scene's light and soft reflections from the HDR cubemap. On-brand:
-    // black/white, no colour.
-    val objectMaterial = remember(materialLoader) {
+    // Soft contact-shadow material: a flat translucent black disc placed on the surface under the
+    // object to ground it. Not a true cast shadow (there's no real geometry to receive one in AR) —
+    // a pragmatic grounding cue. The real relighting comes from Environmental HDR below.
+    val shadowMaterial = remember(materialLoader) {
         materialLoader.createColorInstance(
-            color = Color(0xFFF2F2F2),
-            metallic = 0.0f,
-            roughness = 0.35f,
-            reflectance = 0.5f,
+            color = Color(0f, 0f, 0f, 0.3f), metallic = 0f, roughness = 1f, reflectance = 0f,
         )
     }
 
+    var selected by remember { mutableIntStateOf(0) }
     var frame by remember { mutableStateOf<Frame?>(null) }
     var anchor by remember { mutableStateOf<Anchor?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
@@ -170,21 +195,20 @@ private fun ArContent(onBack: () -> Unit) {
             cameraStream = cameraStream,
             planeRenderer = true,
             sessionConfiguration = { session, config ->
-                // Find horizontal + vertical surfaces.
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                // Depth API (occlusion) when the device supports it, otherwise off.
                 config.depthMode =
                     if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) Config.DepthMode.AUTOMATIC
                     else Config.DepthMode.DISABLED
-                // Environmental HDR: real light direction + intensity + reflection cubemap.
+                // Environmental HDR → Filament IBL (reflection cubemap + ambient SH + main light).
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
             },
             onTrackingFailureChanged = { trackingFailure = it },
             onSessionUpdated = { _, updatedFrame -> frame = updatedFrame },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { motionEvent, node ->
+                    // Tap empty space on a tracked surface to place / move the anchor. Taps that land
+                    // on the object itself (node != null) are left for the editable drag/scale/rotate.
                     if (node == null) {
-                        // Place on a real tracked surface (not a loose depth/feature point).
                         frame?.hitTest(motionEvent.x, motionEvent.y)
                             ?.firstOrNull { it.isValid(depthPoint = false, point = false) }
                             ?.createAnchorOrNull()
@@ -198,18 +222,44 @@ private fun ArContent(onBack: () -> Unit) {
         ) {
             anchor?.let { placed ->
                 AnchorNode(anchor = placed) {
-                    // The test object: a small sphere (~14 cm), lit by the real scene, occludable.
-                    SphereNode(
-                        radius = 0.07f,
-                        materialInstance = objectMaterial,
+                    val item = arItems[selected]
+                    // Grounding contact shadow (flat disc on the surface).
+                    CylinderNode(
+                        radius = 0.09f,
+                        height = 0.002f,
+                        materialInstance = shadowMaterial,
+                        position = Position(y = 0.001f),
                     )
+                    when (item.kind) {
+                        ArKind.Model -> {
+                            val instance = rememberModelInstance(modelLoader, item.asset!!)
+                            instance?.let {
+                                ModelNode(
+                                    modelInstance = it,
+                                    scaleToUnits = item.scaleToUnits,
+                                    isEditable = true,
+                                    apply = { editableScaleRange = 0.1f..1.0f },
+                                )
+                            }
+                        }
+                        ArKind.Text -> {
+                            // Hinterlay's on-brand 3D text (flat panel, white on transparent).
+                            TextNode(
+                                text = "Hinterlay",
+                                textColor = android.graphics.Color.WHITE,
+                                backgroundColor = android.graphics.Color.TRANSPARENT,
+                                widthMeters = 0.4f,
+                                heightMeters = 0.12f,
+                                position = Position(y = 0.1f),
+                            )
+                        }
+                    }
                 }
             }
         }
 
-        // --- Minimal black/white overlay ---------------------------------------------------------
+        // ── Minimal black/white overlay (kept legible over live camera) ──────────────────────────
 
-        // Back button (top-left).
         IconButton(
             onClick = onBack,
             modifier = Modifier.statusBarsPadding().padding(8.dp).align(Alignment.TopStart),
@@ -217,42 +267,68 @@ private fun ArContent(onBack: () -> Unit) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
         }
 
-        // Status pill (top-center): tracking trouble > guidance.
         val status = trackingFailure?.getDescription(LocalContext.current)
             ?: if (anchor == null) "Move your phone, then tap a surface"
-            else "Placed — tap again to move it"
+            else "Drag to move · pinch to scale · twist to rotate"
         if (status.isNotBlank()) {
-            StatusPill(status, Modifier.statusBarsPadding().padding(top = 12.dp).align(Alignment.TopCenter))
+            Pill(status, Modifier.statusBarsPadding().padding(top = 12.dp).align(Alignment.TopCenter))
         }
 
-        // Remove hint (bottom) once something is placed.
-        if (anchor != null) {
-            SecondaryButton(
-                text = "Remove",
-                onClick = { anchor?.detach(); anchor = null },
-                modifier = Modifier.navigationBarsPadding().padding(bottom = 24.dp).align(Alignment.BottomCenter),
-            )
+        Column(
+            modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(bottom = 18.dp)
+                .align(Alignment.BottomCenter),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // Honest lighting note + CC-BY attribution, shown once something is placed.
+            if (anchor != null) {
+                val note = arItems[selected].attribution
+                    ?.let { "Lit by your room (ARCore HDR — a close match, not film-grade) · $it" }
+                    ?: "Lit by your room (ARCore HDR) — a close match, not film-grade relighting"
+                Pill(note, textAlpha = 0.85f)
+                SecondaryButton(text = "Remove", onClick = { anchor?.detach(); anchor = null })
+            }
+
+            // Content picker — translucent pills for contrast over the camera feed.
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                arItems.forEachIndexed { i, item ->
+                    PickPill(label = item.label, selected = i == selected, onClick = { selected = i })
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun StatusPill(text: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        color = Color.Black.copy(alpha = 0.55f),
-        shape = RoundedCornerShape(50),
-    ) {
+private fun Pill(text: String, modifier: Modifier = Modifier, textAlpha: Float = 1f) {
+    Surface(modifier = modifier, color = Color.Black.copy(alpha = 0.55f), shape = RoundedCornerShape(50)) {
         Text(
             text = text,
-            color = Color.White,
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 9.dp),
+            color = Color.White.copy(alpha = textAlpha),
+            style = MaterialTheme.typography.labelMedium,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
         )
     }
 }
 
-/** Full-screen neutral message (unsupported / permission / checking), with Back and optional action. */
+@Composable
+private fun PickPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val fb = com.hinterlay.app.fx.rememberFeedback()
+    Surface(
+        onClick = { onClick(); fb.select() },
+        color = if (selected) Color.White else Color.Black.copy(alpha = 0.5f),
+        contentColor = if (selected) Color.Black else Color.White,
+        shape = RoundedCornerShape(50),
+    ) {
+        Text(label, style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(horizontal = 18.dp, vertical = 10.dp))
+    }
+}
+
+/** Full-screen neutral message (unsupported / permission / checking). */
 @Composable
 private fun ArMessage(
     title: String,
@@ -274,9 +350,7 @@ private fun ArMessage(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth().padding(vertical = 14.dp),
         )
-        if (actionLabel != null && onAction != null) {
-            PrimaryButton(actionLabel, onClick = onAction)
-        }
+        if (actionLabel != null && onAction != null) PrimaryButton(actionLabel, onClick = onAction)
         SecondaryButton(text = "Back", onClick = onBack, modifier = Modifier.padding(top = 12.dp))
     }
 }
