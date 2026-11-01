@@ -61,15 +61,19 @@ import com.hinterlay.app.ui.components.SecondaryButton
 import com.hinterlay.app.ui.components.SubtleButton
 import com.hinterlay.app.ui.components.SwitchRow
 import com.hinterlay.app.ui.safeStart
+import com.hinterlay.app.wallpaper.ClockEffect
 import com.hinterlay.app.wallpaper.ClockRenderer
 import com.hinterlay.app.wallpaper.DepthClockConfig
+import com.hinterlay.app.wallpaper.DepthFx
 import com.hinterlay.app.wallpaper.DepthClockStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 
-private enum class ClockTab(val label: String) { Clock("Clock"), Font("Font"), Color("Color"), Position("Position") }
+private enum class ClockTab(val label: String) {
+    Clock("Clock"), Font("Font"), Color("Color"), Effects("Effects"), Background("Background"), Position("Position")
+}
 
 /** Colours offered for the clock. Content, not UI chrome, so a small tasteful palette is fine (no purple). */
 private val CLOCK_COLORS = listOf(
@@ -173,10 +177,13 @@ fun DepthClockScreen(onBack: () -> Unit, initialUri: Uri? = null) {
                         nc.save()
                         nc.translate(dx, dy)
                         nc.scale(scale, scale)
+                        paint.colorFilter = DepthFx.backFilter(cfg)
                         nc.drawBitmap(b, 0f, 0f, paint)
-                        if (cfg.behind || f == null) ClockRenderer.draw(nc, b.width, b.height, cfg, cal)
+                        paint.colorFilter = null
+                        DepthFx.drawVignette(nc, b.width, b.height, cfg)
+                        if (cfg.behind || f == null) ClockRenderer.draw(nc, b.width, b.height, cfg, cal, b)
                         f?.let { nc.drawBitmap(it, 0f, 0f, paint) }
-                        if (!cfg.behind && f != null) ClockRenderer.draw(nc, b.width, b.height, cfg, cal)
+                        if (!cfg.behind && f != null) ClockRenderer.draw(nc, b.width, b.height, cfg, cal, b)
                         nc.restore()
                     }
                 }
@@ -238,6 +245,29 @@ fun DepthClockScreen(onBack: () -> Unit, initialUri: Uri? = null) {
                                 }
                             }
                         }
+                        ClockTab.Effects -> {
+                            Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ClockEffect.entries.forEach { e ->
+                                    Chip(
+                                        selected = config.clockEffect == e,
+                                        onClick = { config = config.copy(effect = e.name) },
+                                        label = { Text(e.label) },
+                                    )
+                                }
+                            }
+                            if (config.clockEffect == ClockEffect.PHOTO) {
+                                Text(
+                                    "The digits reveal the photo behind them.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                        }
+                        ClockTab.Background -> {
+                            LabeledSlider("Wash", config.dim, 0f..0.85f, "${(config.dim * 100).toInt()}%") { config = config.copy(dim = it) }
+                            LabeledSlider("Saturation", config.saturation, 0f..1.8f, "${(config.saturation * 100).toInt()}%") { config = config.copy(saturation = it) }
+                            LabeledSlider("Vignette", config.vignette, 0f..1f, "${(config.vignette * 100).toInt()}%") { config = config.copy(vignette = it) }
+                        }
                         ClockTab.Position -> {
                             LabeledSlider("Horizontal", config.x, 0f..1f, "${(config.x * 100).toInt()}%") { config = config.copy(x = it) }
                             LabeledSlider("Vertical", config.y, 0f..1f, "${(config.y * 100).toInt()}%") { config = config.copy(y = it) }
@@ -296,6 +326,11 @@ fun DepthClockScreen(onBack: () -> Unit, initialUri: Uri? = null) {
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Frozen snapshot — the time won't update. Re-apply to refresh it, or use Live above.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             },

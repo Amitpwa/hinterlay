@@ -5,8 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.LinearGradient
 import android.graphics.Paint
+import android.graphics.RadialGradient
+import android.graphics.Shader
 import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
@@ -36,6 +42,19 @@ import kotlin.math.max
 // ---- Config ----------------------------------------------------------------------------------
 
 /**
+ * How the clock digits are decorated. One pick at a time (stored by name so new effects don't break
+ * old saves). [PHOTO] fills the digits with the photo behind them — a see-through, depth-true look.
+ */
+enum class ClockEffect(val label: String) {
+    NONE("None"),
+    SHADOW("Shadow"),
+    OUTLINE("Outline"),
+    GLOW("Glow"),
+    GRADIENT("Gradient"),
+    PHOTO("Photo fill"),
+}
+
+/**
  * All the styling the depth clock needs, as a value saved to disk. Geometry is relative to the
  * image so the editor preview and the full-size wallpaper render identically. [fontName] stores a
  * [FontChoice] by name so new fonts don't break old saves.
@@ -60,9 +79,20 @@ data class DepthClockConfig(
     val dateSizeRel: Float = 0.055f,
     /** Draw the clock behind the subject (the depth effect) rather than in front. */
     val behind: Boolean = true,
+    /** Digit decoration ([ClockEffect] by name). */
+    val effect: String = ClockEffect.NONE.name,
+    /** Darken the back plane (the "wash"), 0 = none .. 1 = black, so the clock reads clearly. */
+    val dim: Float = 0f,
+    /** Saturation of the back plane, 0 = greyscale, 1 = untouched, up to 2 = punchy. */
+    val saturation: Float = 1f,
+    /** Darken the corners of the back plane, 0 = none .. 1 = strong. */
+    val vignette: Float = 0f,
 ) {
     val fontChoice: FontChoice
         get() = runCatching { FontChoice.valueOf(fontName) }.getOrDefault(FontChoice.ANTON)
+
+    val clockEffect: ClockEffect
+        get() = runCatching { ClockEffect.valueOf(effect) }.getOrDefault(ClockEffect.NONE)
 
     fun toJson(): String = JSONObject().apply {
         put("twentyFour", twentyFour)
@@ -77,6 +107,10 @@ data class DepthClockConfig(
         put("sizeRel", sizeRel.toDouble())
         put("dateSizeRel", dateSizeRel.toDouble())
         put("behind", behind)
+        put("effect", effect)
+        put("dim", dim.toDouble())
+        put("saturation", saturation.toDouble())
+        put("vignette", vignette.toDouble())
     }.toString()
 
     companion object {
@@ -96,6 +130,10 @@ data class DepthClockConfig(
                 sizeRel = o.optDouble("sizeRel", d.sizeRel.toDouble()).toFloat(),
                 dateSizeRel = o.optDouble("dateSizeRel", d.dateSizeRel.toDouble()).toFloat(),
                 behind = o.optBoolean("behind", d.behind),
+                effect = o.optString("effect", d.effect),
+                dim = o.optDouble("dim", d.dim.toDouble()).toFloat(),
+                saturation = o.optDouble("saturation", d.saturation.toDouble()).toFloat(),
+                vignette = o.optDouble("vignette", d.vignette.toDouble()).toFloat(),
             )
         }.getOrDefault(DepthClockConfig())
     }
@@ -155,10 +193,13 @@ object DepthClockStore {
         val c = Canvas(out)
         val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
         val cal = Calendar.getInstance()
+        p.colorFilter = DepthFx.backFilter(config)
         c.drawBitmap(back, 0f, 0f, p)
-        if (config.behind || front == null) ClockRenderer.draw(c, back.width, back.height, config, cal)
+        p.colorFilter = null
+        DepthFx.drawVignette(c, back.width, back.height, config)
+        if (config.behind || front == null) ClockRenderer.draw(c, back.width, back.height, config, cal, back)
         front?.let { c.drawBitmap(it, 0f, 0f, p) }
-        if (!config.behind && front != null) ClockRenderer.draw(c, back.width, back.height, config, cal)
+        if (!config.behind && front != null) ClockRenderer.draw(c, back.width, back.height, config, cal, back)
         android.app.WallpaperManager.getInstance(context)
             .setBitmap(out, null, true, android.app.WallpaperManager.FLAG_LOCK)
         back.recycle(); front?.recycle(); out.recycle()
@@ -206,9 +247,13 @@ object DepthClockFormat {
  */
 object ClockRenderer {
 
-    private class Line(val text: String, val paint: Paint)
+    private class Line(val text: String, val paint: Paint, val big: Boolean)
 
-    fun draw(canvas: Canvas, imgW: Int, imgH: Int, config: DepthClockConfig, cal: Calendar) {
+    /**
+     * @param fillSource the back-plane photo, used only by [ClockEffect.PHOTO] to fill the digits
+     *   with the image behind them. Everything else ignores it.
+     */
+    fun draw(canvas: Canvas, imgW: Int, imgH: Int, config: DepthClockConfig, cal: Calendar, fillSource: Bitmap? = null) {
         val parts = DepthClockFormat.timeParts(config, cal)
         val size = (config.sizeRel * imgW).coerceAtLeast(8f)
         val big = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -227,14 +272,14 @@ object ClockRenderer {
 
         val lines = ArrayList<Line>()
         if (config.vertical) {
-            lines.add(Line(parts.hour, big))
-            lines.add(Line(parts.minute, big))
+            lines.add(Line(parts.hour, big, true))
+            lines.add(Line(parts.minute, big, true))
         } else {
             val sep = if (config.separator) parts.separator else " "
-            lines.add(Line("${parts.hour}$sep${parts.minute}", big))
+            lines.add(Line("${parts.hour}$sep${parts.minute}", big, true))
         }
         val date = DepthClockFormat.dateText(config, cal)
-        if (date.isNotEmpty()) lines.add(Line(date, small))
+        if (date.isNotEmpty()) lines.add(Line(date, small, false))
 
         // Shrink to fit: the size setting is a target, but a wide line (e.g. "03:22") must never
         // overflow the frame. Scale every line by the same factor so proportions are kept, and
@@ -247,16 +292,153 @@ object ClockRenderer {
             totalH *= fit
         }
 
-        // Stack the lines and centre the whole block on (x, y).
+        // Geometry of the stacked block, centred on (x, y).
         val heights = lines.map { val fm = it.paint.fontMetrics; fm.descent - fm.ascent }
         val cx = config.x * imgW
-        var top = config.y * imgH - totalH / 2f
+        val blockTop = config.y * imgH - totalH / 2f
+
+        // Decorate the digit paints for the chosen effect (shadow/glow/gradient/photo). The big
+        // digits take every effect; the date shares shadow/glow but keeps a solid fill so it stays
+        // legible. Outline is drawn as a separate stroke pass below.
+        applyEffect(config.clockEffect, big, small, cx, blockTop, totalH, config.color, fillSource)
+        val stroke: Paint? = if (config.clockEffect == ClockEffect.OUTLINE) {
+            Paint(big).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = big.textSize * 0.045f
+                color = outlineColor(config.color)
+                shader = null
+                clearShadowLayer()
+            }
+        } else null
+
+        var top = blockTop
         for (i in lines.indices) {
             val l = lines[i]
             val fm = l.paint.fontMetrics
-            canvas.drawText(l.text, cx, top - fm.ascent, l.paint)
+            val baseline = top - fm.ascent
+            if (stroke != null && l.big) {
+                stroke.textSize = l.paint.textSize
+                canvas.drawText(l.text, cx, baseline, stroke)
+            }
+            canvas.drawText(l.text, cx, baseline, l.paint)
             top += heights[i]
         }
+    }
+
+    /** Configure [big] (and, where it helps, [small]) in place for [effect]. */
+    private fun applyEffect(
+        effect: ClockEffect,
+        big: Paint,
+        small: Paint,
+        cx: Float,
+        blockTop: Float,
+        blockH: Float,
+        color: Int,
+        fillSource: Bitmap?,
+    ) {
+        when (effect) {
+            ClockEffect.NONE, ClockEffect.OUTLINE -> Unit // solid fill (outline adds a stroke pass)
+            ClockEffect.SHADOW -> {
+                big.setShadowLayer(big.textSize * 0.06f, 0f, big.textSize * 0.045f, 0x80000000.toInt())
+                small.setShadowLayer(small.textSize * 0.08f, 0f, small.textSize * 0.06f, 0x80000000.toInt())
+            }
+            ClockEffect.GLOW -> {
+                big.setShadowLayer(big.textSize * 0.18f, 0f, 0f, glowColor(color))
+                small.setShadowLayer(small.textSize * 0.18f, 0f, 0f, glowColor(color))
+            }
+            ClockEffect.PHOTO -> {
+                // Digits become a window onto the photo behind them. The shader samples the back
+                // plane in image coordinates, so it lines up with the scene under the clock.
+                if (fillSource != null) {
+                    big.shader = BitmapShader(fillSource, Shader.TileMode.CLAMP, Shader.TileMode.CLAMP)
+                }
+            }
+            ClockEffect.GRADIENT -> {
+                // Fade the big digits from a lighter tint at the top to a darker shade at the
+                // bottom — a quiet "metallic" fall. Both stops are blended from the chosen colour
+                // (toward white, toward black), so it stays on-brand and still reads whether the
+                // clock is white, black, or an accent. The date keeps its solid fill.
+                val top = blend(color, 0xFFFFFFFF.toInt(), 0.40f)
+                val bottom = blend(color, 0xFF000000.toInt(), 0.30f)
+                big.shader = LinearGradient(cx, blockTop, cx, blockTop + blockH, top, bottom, Shader.TileMode.CLAMP)
+            }
+        }
+    }
+
+    /** Linear blend of [a] toward [b] by [t] (0 = a, 1 = b), keeping a's alpha. */
+    private fun blend(a: Int, b: Int, t: Float): Int {
+        val k = t.coerceIn(0f, 1f)
+        fun mix(shift: Int): Int {
+            val ca = (a ushr shift) and 0xFF
+            val cb = (b ushr shift) and 0xFF
+            return (ca + (cb - ca) * k).toInt().coerceIn(0, 255)
+        }
+        val alpha = (a ushr 24) and 0xFF
+        return (alpha shl 24) or (mix(16) shl 16) or (mix(8) shl 8) or mix(0)
+    }
+
+    private fun luminance(color: Int): Float {
+        val r = ((color ushr 16) and 0xFF) / 255f
+        val g = ((color ushr 8) and 0xFF) / 255f
+        val b = (color and 0xFF) / 255f
+        return 0.2126f * r + 0.7152f * g + 0.0722f * b
+    }
+
+    /** Glow colour: a near-black clock glows white, otherwise the digits glow in their own colour. */
+    private fun glowColor(color: Int): Int {
+        val base = if (luminance(color) < 0.25f) 0xFFFFFFFF.toInt() else color
+        return (base and 0x00FFFFFF) or (0xCC shl 24)
+    }
+
+    /** Outline colour: dark around light digits, light around dark ones. */
+    private fun outlineColor(color: Int): Int =
+        if (luminance(color) > 0.5f) 0xCC000000.toInt() else 0xCCFFFFFF.toInt()
+}
+
+// ---- Background treatment --------------------------------------------------------------------
+
+/**
+ * The "wash" over the back plane: saturation + dim as one colour-matrix filter, and a vignette as
+ * a radial overlay. Applied to the soft back plane only, so the sharp subject keeps its full colour
+ * and stands out. Both the editor preview and the live wallpaper call these, so they match.
+ */
+object DepthFx {
+
+    /** A colour filter for the back plane from [DepthClockConfig.saturation] + [DepthClockConfig.dim], or null when both are neutral. */
+    fun backFilter(config: DepthClockConfig): ColorMatrixColorFilter? {
+        val sat = config.saturation.coerceIn(0f, 2f)
+        val dim = config.dim.coerceIn(0f, 1f)
+        if (sat == 1f && dim <= 0f) return null
+        val cm = ColorMatrix().apply { setSaturation(sat) }
+        if (dim > 0f) {
+            val k = 1f - dim
+            cm.postConcat(ColorMatrix(floatArrayOf(
+                k, 0f, 0f, 0f, 0f,
+                0f, k, 0f, 0f, 0f,
+                0f, 0f, k, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f,
+            )))
+        }
+        return ColorMatrixColorFilter(cm)
+    }
+
+    /** Darken the corners of the back plane, in image coordinates. No-op when vignette is off. */
+    fun drawVignette(canvas: Canvas, imgW: Int, imgH: Int, config: DepthClockConfig) {
+        val v = config.vignette.coerceIn(0f, 1f)
+        if (v <= 0f) return
+        val cx = imgW / 2f
+        val cy = imgH / 2f
+        val radius = kotlin.math.hypot(cx.toDouble(), cy.toDouble()).toFloat()
+        val edge = ((v * 210f).toInt().coerceIn(0, 255) shl 24) // black, rising alpha toward the edge
+        val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader = RadialGradient(
+                cx, cy, radius,
+                intArrayOf(0x00000000, 0x00000000, edge),
+                floatArrayOf(0f, 0.55f, 1f),
+                Shader.TileMode.CLAMP,
+            )
+        }
+        canvas.drawRect(0f, 0f, imgW.toFloat(), imgH.toFloat(), p)
     }
 }
 
@@ -350,7 +532,7 @@ class DepthClockWallpaperService : WallpaperService() {
                 val maxX = (sw - width) / 2f
                 val maxY = (sh - height) / 2f
                 val f = front
-                drawPlane(canvas, b, scale, sw, sh, cx * maxX * 0.45f, cy * maxY * 0.45f)
+                drawPlane(canvas, b, scale, sw, sh, cx * maxX * 0.45f, cy * maxY * 0.45f, back = true)
                 // Clock sits between the planes when behind, with parallax midway between them.
                 if (config.behind || f == null) drawClock(canvas, b, scale, sw, sh, maxX, maxY, 0.7f)
                 f?.let { drawPlane(canvas, it, scale, sw, sh, cx * maxX, cy * maxY) }
@@ -360,13 +542,18 @@ class DepthClockWallpaperService : WallpaperService() {
             }
         }
 
-        private fun drawPlane(c: Canvas, bmp: Bitmap, scale: Float, sw: Float, sh: Float, dx: Float, dy: Float) {
+        private fun drawPlane(c: Canvas, bmp: Bitmap, scale: Float, sw: Float, sh: Float, dx: Float, dy: Float, back: Boolean = false) {
             val left = (width - sw) / 2f + dx
             val top = (height - sh) / 2f + dy
             c.save()
             c.translate(left, top)
             c.scale(scale, scale)
+            if (back) paint.colorFilter = DepthFx.backFilter(config)
             c.drawBitmap(bmp, 0f, 0f, paint)
+            if (back) {
+                paint.colorFilter = null
+                DepthFx.drawVignette(c, bmp.width, bmp.height, config)
+            }
             c.restore()
         }
 
@@ -376,7 +563,7 @@ class DepthClockWallpaperService : WallpaperService() {
             c.save()
             c.translate(left, top)
             c.scale(scale, scale)
-            ClockRenderer.draw(c, b.width, b.height, config, Calendar.getInstance())
+            ClockRenderer.draw(c, b.width, b.height, config, Calendar.getInstance(), b)
             c.restore()
         }
     }
