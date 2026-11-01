@@ -19,10 +19,15 @@ import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.outlined.AddPhotoAlternate
 import androidx.compose.material.icons.outlined.AutoAwesome
+import androidx.compose.material.icons.outlined.EmojiEmotions
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.PhotoLibrary
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Icon
@@ -159,6 +164,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
 
     // "Pick photo" from a shortcut, widget or Assistant: open the system photo picker right away.
     var pickRequest by rememberSaveable { mutableStateOf(false) }
+    var createMenuOpen by rememberSaveable { mutableStateOf(false) }
     val quickPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
     ) { picked -> if (picked != null) editingUri = picked }
@@ -250,13 +256,15 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
         Screen.Home -> {
             // Back from another tab returns to Create first, like most apps.
             if (tab != Tab.Create) BackHandler { tab = Tab.Create }
+            if (createMenuOpen) BackHandler { createMenuOpen = false }
+            androidx.compose.foundation.layout.Box {
             Scaffold(
                 bottomBar = {
                     com.hinterlay.app.ui.home.FloatingNavBar(
                         items = Tab.entries.map { com.hinterlay.app.ui.home.NavItem(it.label, it.icon, it.selectedIcon) },
                         selected = tab.ordinal,
                         onSelect = { i -> if (tab.ordinal != i) fb.select(); tab = Tab.entries[i] },
-                        onCamera = { fb.toggle(); screen = Screen.Camera },
+                        onCamera = { fb.toggle(); createMenuOpen = true },
                     )
                 },
                 containerColor = MaterialTheme.colorScheme.background,
@@ -304,6 +312,17 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
                     }
                     }
                 }
+            }
+            if (createMenuOpen) com.hinterlay.app.ui.components.RadialCreateMenu(
+                actions = listOf(
+                    com.hinterlay.app.ui.components.RadialAction("Photo", Icons.Outlined.AddPhotoAlternate) { route("pick") },
+                    com.hinterlay.app.ui.components.RadialAction("Depth clock", Icons.Outlined.Schedule) { route("clock") },
+                    com.hinterlay.app.ui.components.RadialAction("Camera", Icons.Outlined.PhotoCamera) { route("camera") },
+                    com.hinterlay.app.ui.components.RadialAction("Stickers", Icons.Outlined.EmojiEmotions) { route("stickers") },
+                    com.hinterlay.app.ui.components.RadialAction("Video", Icons.Outlined.Videocam, enabled = false) {},
+                ),
+                onDismiss = { createMenuOpen = false },
+            )
             }
         }
     }
