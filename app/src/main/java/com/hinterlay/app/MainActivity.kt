@@ -39,6 +39,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -123,7 +124,7 @@ private fun Modifier.com_halftone(): Modifier = composed {
     this.halftone(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f), spacing = 12.dp, maxRadius = 1.7.dp, fromTop = false)
 }
 
-private enum class Screen { Home, Stickers, Support, Privacy, Onboarding, Camera, DepthClock }
+private enum class Screen { Home, Stickers, Support, Privacy, Onboarding, Camera, DepthClock, ArVideo }
 private enum class Tab(val label: String, val icon: ImageVector, val selectedIcon: ImageVector) {
     Create("Create", Icons.Outlined.Home, Icons.Filled.Home),
     Inspire("Inspire", Icons.Outlined.AutoAwesome, Icons.Filled.AutoAwesome),
@@ -165,6 +166,14 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
     // "Pick photo" from a shortcut, widget or Assistant: open the system photo picker right away.
     var pickRequest by rememberSaveable { mutableStateOf(false) }
     var createMenuOpen by rememberSaveable { mutableStateOf(false) }
+    // Real-world AR video needs ARCore. Dim the "Video" spoke only on devices that definitively
+    // can't run it; transient/unknown states still open the screen, which gates itself.
+    val arBlocked = remember {
+        try {
+            com.google.ar.core.ArCoreApk.getInstance().checkAvailability(context) ==
+                com.google.ar.core.ArCoreApk.Availability.UNSUPPORTED_DEVICE_NOT_CAPABLE
+        } catch (e: Exception) { false }
+    }
     val quickPicker = androidx.activity.compose.rememberLauncherForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.PickVisualMedia(),
     ) { picked -> if (picked != null) editingUri = picked }
@@ -184,6 +193,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
             action == "inspire" -> { screen = Screen.Home; tab = Tab.Inspire }
             action == "wallpaper" -> { screen = Screen.Home; tab = Tab.Library }
             action == "stickers" -> screen = Screen.Stickers
+            action == "arvideo" -> screen = Screen.ArVideo
             action == "clock" -> { editor.pendingClock = true; screen = Screen.Home; tab = Tab.Create; pickRequest = true }
             action == "support" -> screen = Screen.Support
             action.startsWith("url:") -> runCatching {
@@ -248,6 +258,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
         )
         Screen.Privacy -> PrivacyScreen(onBack = { screen = Screen.Home })
         Screen.DepthClock -> DepthClockScreen(onBack = { screen = Screen.Home })
+        Screen.ArVideo -> com.hinterlay.app.ui.ar.ArVideoScreen(onBack = { screen = Screen.Home })
         Screen.Support -> SupportScreen(onBack = { screen = Screen.Home })
         Screen.Stickers -> StickersScreen(
             onBack = { screen = Screen.Home },
@@ -319,7 +330,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
                     com.hinterlay.app.ui.components.RadialAction("Depth clock", Icons.Outlined.Schedule) { route("clock") },
                     com.hinterlay.app.ui.components.RadialAction("Camera", Icons.Outlined.PhotoCamera) { route("camera") },
                     com.hinterlay.app.ui.components.RadialAction("Stickers", Icons.Outlined.EmojiEmotions) { route("stickers") },
-                    com.hinterlay.app.ui.components.RadialAction("Video", Icons.Outlined.Videocam, enabled = false) {},
+                    com.hinterlay.app.ui.components.RadialAction("Video", Icons.Outlined.Videocam, enabled = !arBlocked) { route("arvideo") },
                 ),
                 onDismiss = { createMenuOpen = false },
             )
