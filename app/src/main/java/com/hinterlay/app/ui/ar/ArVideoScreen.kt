@@ -11,12 +11,10 @@ package com.hinterlay.app.ui.ar
 // NOT Simulon's neural physically-based relighting (research-grade, not replicable on-device). The
 // UI says so rather than overpromising.
 //
-// TODO(route): MainActivity routing is owned by the radial-menu session, so this screen is NOT wired
-// into navigation here. To route to it once both branches merge: add a `MainScreen` entry (e.g.
-// `ArVideo`) + deep-link action — handle `hinterlay_action == "arvideo"` in MainActivity — then
-// render `ArVideoScreen(onBack = { screen = MainScreen.Home })`. The radial Create menu already
-// reserves a disabled "Video" spoke that should point here. (A debug-only launcher,
-// ArDebugActivity in src/debug, hosts this screen for on-device testing before routing lands.)
+// Routing: reached in-app from the radial Create menu's "Video" spoke — MainActivity maps the
+// "arvideo" action to Screen.ArVideo and renders ArVideoScreen(onBack = { screen = Screen.Home }).
+// The spoke is dimmed only on ARCore-incapable devices; this screen also gates itself on
+// ArCoreApk availability below.
 
 import android.Manifest
 import android.content.pm.PackageManager
