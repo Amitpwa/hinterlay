@@ -75,6 +75,9 @@ data class EditorUiState(
     // The heal stroke being painted (only for the faint on-screen preview), and whether a heal can be undone.
     val heal: com.hinterlay.app.render.BrushStroke? = null,
     val canUndoHeal: Boolean = false,
+    // Depth-clock mode: non-null means a live clock is slipped behind the subject, styled here and
+    // applied as a wallpaper. Null = ordinary photo editing.
+    val clock: com.hinterlay.app.wallpaper.DepthClockConfig? = null,
 ) {
     val selected: TextLayer? get() = layers.firstOrNull { it.id == selectedId }
     val subjectEdit: Compositor.SubjectEdit? get() = if (subjectMask != null || smooth != null) Compositor.SubjectEdit(subjectMask, plate, smooth) else null
@@ -112,6 +115,9 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A style picked from Inspire, applied to the first text layer of the next photo. */
     var pendingPreset: com.hinterlay.app.cloud.Preset? = null
+
+    /** When true, the next photo opens in depth-clock mode (a live clock behind the subject). */
+    var pendingClock: Boolean = false
 
     private val _state = MutableStateFlow(EditorUiState())
     val state: StateFlow<EditorUiState> = _state.asStateFlow()
@@ -208,6 +214,19 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
             }
             val preset = pendingPreset
             pendingPreset = null
+            if (pendingClock) {
+                pendingClock = false
+                _state.update {
+                    it.copy(
+                        phase = Phase.Ready, foreground = foreground, subjectFound = foreground != null,
+                        layers = emptyList(), selectedId = null,
+                        clock = com.hinterlay.app.wallpaper.DepthClockConfig(behind = foreground != null),
+                    )
+                }
+                scheduleFx()
+                markClean()
+                return@launch
+            }
             val first = if (preset != null) preset.toLayer(nextId++, foreground != null)
             else TextLayer(id = nextId++, text = DEFAULT_TEXT, behindSubject = foreground != null)
             _state.update {
@@ -1126,6 +1145,33 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         val source = s.source ?: return false
         return withContext(Dispatchers.Default) {
             runCatching { WallpaperStore.write(getApplication(), source, s.foreground, s.layers, s.subjectEdit, s.plate) }.isSuccess
+        }
+    }
+
+    /** Update the depth-clock styling (no-op when not in clock mode). */
+    fun setClock(transform: (com.hinterlay.app.wallpaper.DepthClockConfig) -> com.hinterlay.app.wallpaper.DepthClockConfig) {
+        _state.update { s -> s.clock?.let { s.copy(clock = transform(it)) } ?: s }
+    }
+
+    /** Sets the edited composition + clock as the live depth-clock wallpaper (lock & home). */
+    suspend fun prepareDepthClock(): Boolean {
+        val s = _state.value
+        val source = s.source ?: return false
+        val config = s.clock ?: return false
+        return withContext(Dispatchers.Default) {
+            runCatching {
+                com.hinterlay.app.wallpaper.DepthClockStore.write(getApplication(), source, s.foreground, config, s.layers, s.subjectEdit, s.plate)
+            }.isSuccess
+        }
+    }
+
+    /** Sets the edited composition + clock as a still lock-screen wallpaper. */
+    suspend fun applyDepthClockLock(): Boolean {
+        val s = _state.value
+        val source = s.source ?: return false
+        val config = s.clock ?: return false
+        return withContext(Dispatchers.Default) {
+            com.hinterlay.app.wallpaper.DepthClockStore.applyStaticLock(getApplication(), source, s.foreground, config, s.layers, s.subjectEdit, s.plate)
         }
     }
 

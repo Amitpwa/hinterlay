@@ -184,7 +184,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
             action == "inspire" -> { screen = Screen.Home; tab = Tab.Inspire }
             action == "wallpaper" -> { screen = Screen.Home; tab = Tab.Library }
             action == "stickers" -> screen = Screen.Stickers
-            action == "clock" -> screen = Screen.DepthClock
+            action == "clock" -> { editor.pendingClock = true; screen = Screen.Home; tab = Tab.Create; pickRequest = true }
             action == "support" -> screen = Screen.Support
             action.startsWith("url:") -> runCatching {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(action.removePrefix("url:"))))
@@ -291,7 +291,7 @@ private fun HinterlayRoot(initialUri: Uri?, consent: ConsentManager, pendingActi
                             onOpenCreation = openCreation,
                             onSeeAll = { tab = Tab.Library },
                             onCardAction = route,
-                            onDepthClock = { screen = Screen.DepthClock },
+                            onDepthClock = { editor.pendingClock = true; tab = Tab.Create; pickRequest = true },
                         )
                         Tab.Inspire -> InspireScreen(onUseIdea = { preset: Preset, picked: Uri ->
                             editor.pendingPreset = preset
