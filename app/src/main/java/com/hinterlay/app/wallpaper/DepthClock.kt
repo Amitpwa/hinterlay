@@ -153,11 +153,17 @@ object DepthClockStore {
 
     /**
      * Splits [source] (with its [foreground] cut-out) into the two planes and saves them with
-     * [config]. No text layers are baked in — the clock is drawn live by the service.
+     * [config]. Any [layers] / subject [edit] / [plate] from the editor are baked into the planes
+     * (crop, text, erase, smoothing), so the depth clock inherits the full photo edit; the clock
+     * itself is drawn live by the service.
      */
-    fun write(context: Context, source: Bitmap, foreground: Bitmap?, config: DepthClockConfig) {
+    fun write(
+        context: Context, source: Bitmap, foreground: Bitmap?, config: DepthClockConfig,
+        layers: List<com.hinterlay.app.editor.TextLayer> = emptyList(),
+        edit: Compositor.SubjectEdit? = null, plate: Bitmap? = null,
+    ) {
         com.hinterlay.app.cloud.Track.event("depth_clock_set")
-        val (back, front) = Compositor.renderPlanes(source, foreground, emptyList())
+        val (back, front) = Compositor.renderPlanes(source, foreground, layers, edit, plate)
         FileOutputStream(back(context)).use { back.compress(Bitmap.CompressFormat.JPEG, 92, it) }
         val f = front(context)
         if (front != null) FileOutputStream(f).use { front.compress(Bitmap.CompressFormat.PNG, 100, it) } else f.delete()
@@ -186,9 +192,13 @@ object DepthClockStore {
      * wallpaper (leaving the home screen untouched). A still image can't tick, so it shows the
      * time it was set; re-apply to update. Returns true on success.
      */
-    fun applyStaticLock(context: Context, source: Bitmap, foreground: Bitmap?, config: DepthClockConfig): Boolean = runCatching {
+    fun applyStaticLock(
+        context: Context, source: Bitmap, foreground: Bitmap?, config: DepthClockConfig,
+        layers: List<com.hinterlay.app.editor.TextLayer> = emptyList(),
+        edit: Compositor.SubjectEdit? = null, plate: Bitmap? = null,
+    ): Boolean = runCatching {
         saveConfig(context, config)
-        val (back, front) = Compositor.renderPlanes(source, foreground, emptyList())
+        val (back, front) = Compositor.renderPlanes(source, foreground, layers, edit, plate)
         val out = Bitmap.createBitmap(back.width, back.height, Bitmap.Config.ARGB_8888)
         val c = Canvas(out)
         val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)

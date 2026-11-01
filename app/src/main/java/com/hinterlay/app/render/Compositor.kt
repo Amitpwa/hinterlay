@@ -335,15 +335,26 @@ object Compositor {
     fun render(
         canvas: Canvas, background: Bitmap, foreground: Bitmap?, layers: List<TextLayer>,
         edit: SubjectEdit? = null, adjust: PhotoAdjust? = null,
+        clock: com.hinterlay.app.wallpaper.DepthClockConfig? = null,
+        clockCal: java.util.Calendar? = null,
     ) {
         val w = background.width
         val h = background.height
         val photoPaint = adjust?.paint(bitmapPaint) ?: bitmapPaint
         canvas.drawBitmap(background, 0f, 0f, photoPaint)
+        // Depth-clock back-plane wash (dim + vignette), behind everything, matching the live wallpaper.
+        if (clock != null) {
+            if (clock.dim > 0f) canvas.drawColor(((clock.dim.coerceIn(0f, 1f) * 255f).toInt() shl 24))
+            com.hinterlay.app.wallpaper.DepthFx.drawVignette(canvas, w, h, clock)
+        }
+        fun drawClock() = clock?.let {
+            com.hinterlay.app.wallpaper.ClockRenderer.draw(canvas, w, h, it, clockCal ?: java.util.Calendar.getInstance(), background)
+        }
         if (foreground == null) {
             drawSmooth(canvas, edit, adjust, w, h)
             adjust?.drawVignette(canvas, w, h)
             layers.forEach { drawLayer(canvas, it, w, h) }
+            drawClock()
             return
         }
         // Erased parts of the subject are covered by the soft clean background, so they truly disappear.
@@ -356,10 +367,12 @@ object Compositor {
             canvas.restoreToCount(saved)
         }
         layers.filter { it.behindSubject }.forEach { drawLayer(canvas, it, w, h) }
+        if (clock != null && clock.behind) drawClock()
         drawSubject(canvas, foreground, edit, w, h, photoPaint)
         drawSmooth(canvas, edit, adjust, w, h)
         adjust?.drawVignette(canvas, w, h)
         layers.filterNot { it.behindSubject }.forEach { drawLayer(canvas, it, w, h) }
+        if (clock != null && !clock.behind) drawClock()
     }
 
     private val smoothPaint = Paint(Paint.FILTER_BITMAP_FLAG)

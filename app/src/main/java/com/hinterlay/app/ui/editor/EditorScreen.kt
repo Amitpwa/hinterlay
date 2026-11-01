@@ -72,6 +72,7 @@ import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircleOutline
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.TextFields
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.outlined.Tune
 import com.hinterlay.app.ui.components.AlertDialog
@@ -193,6 +194,16 @@ fun EditorScreen(uri: Uri, vm: EditorViewModel, onExit: () -> Unit) {
     var magicOpen by remember { mutableStateOf(false) }
     var smoothOpen by remember { mutableStateOf(false) }
     var toolsOpen by remember { mutableStateOf(false) }
+    // Depth-clock mode: whether the clock panel is open, and a 1-second tick for the live preview.
+    var clockOpen by remember { mutableStateOf(false) }
+    var showClockApply by remember { mutableStateOf(false) }
+    var clockNow by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(ui.clock != null) {
+        if (ui.clock != null) {
+            clockOpen = true
+            while (true) { clockNow = System.currentTimeMillis(); kotlinx.coroutines.delay(1000) }
+        }
+    }
     // Progress (0..1) of the face scan animation, driven by the screen's frame clock while it runs.
     var scanProgress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(ui.faceScanning, ui.faceScanStart) {
@@ -370,6 +381,8 @@ fun EditorScreen(uri: Uri, vm: EditorViewModel, onExit: () -> Unit) {
                         fxSource = ui.fxSource,
                         fxForeground = ui.fxForeground,
                         showOriginal = showOriginal,
+                        clock = ui.clock,
+                        clockMillis = clockNow,
                         tiltX = tiltX,
                         tiltY = tiltY,
                         scanPoses = if (ui.faceScanning) ui.faces else null,
@@ -461,6 +474,9 @@ fun EditorScreen(uri: Uri, vm: EditorViewModel, onExit: () -> Unit) {
                                     }
                                 }
                             }
+                            if (ui.clock != null) CanvasPill(Icons.Outlined.Schedule, "Clock", active = clockOpen) {
+                                fb.select(); smoothOpen = false; toolsOpen = false; clockOpen = !clockOpen
+                            }
                             if (ui.canUndoCrop) CanvasPill(Icons.AutoMirrored.Filled.Undo, "Undo") { fb.undo(); vm.undoCrop() }
                         }
                         if (smoothOpen) {
@@ -510,7 +526,19 @@ fun EditorScreen(uri: Uri, vm: EditorViewModel, onExit: () -> Unit) {
             )
 
             val selected = ui.selected
-            if (ui.phase == Phase.Ready && toolsOpen && !cropMode) {
+            val clockCfg = ui.clock
+            if (ui.phase == Phase.Ready && clockOpen && clockCfg != null && !cropMode) {
+                // Depth-clock controls take the place of the text tabs; the photo (and live clock) stay visible.
+                ClockPanel(
+                    config = clockCfg,
+                    onConfig = vm::setClock,
+                    hasSubject = ui.foreground != null,
+                    contentHeight = (panelDp.coerceAtLeast(260f) - 56f).dp,
+                    onClose = { fb.select(); clockOpen = false },
+                    onApply = { fb.select(); showClockApply = true },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                )
+            } else if (ui.phase == Phase.Ready && toolsOpen && !cropMode) {
                 // Photo tools take the place of the text tabs, so the whole photo stays visible while you adjust.
                 PhotoToolsPanel(
                     adjust = ui.adjust, fx = ui.fx,
@@ -588,6 +616,45 @@ fun EditorScreen(uri: Uri, vm: EditorViewModel, onExit: () -> Unit) {
 
     if (showExportSheet) {
         ExportSheet(onDismiss = { showExportSheet = false }, onExport = startExport)
+    }
+
+    if (showClockApply) {
+        com.hinterlay.app.ui.components.AlertDialog(
+            onDismissRequest = { showClockApply = false },
+            title = { Text("Set depth clock") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Your phone's own lock-screen clock and notification icons stay under Android's control — " +
+                            "this app can't move them. Place the depth clock where your phone's clock isn't.",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    com.hinterlay.app.ui.components.PrimaryButton(
+                        "Live — lock & home (ticks)",
+                        onClick = {
+                            showClockApply = false
+                            scope.launch {
+                                if (vm.prepareDepthClock()) context.safeStart(com.hinterlay.app.wallpaper.DepthClockStore.setIntent(context))
+                                else Toast.makeText(context, "Couldn't set the depth clock", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    com.hinterlay.app.ui.components.SecondaryButton(
+                        "Lock screen only (still image)",
+                        onClick = {
+                            showClockApply = false
+                            scope.launch {
+                                val ok = vm.applyDepthClockLock()
+                                Toast.makeText(context, if (ok) "Set on your lock screen" else "Couldn't set the lock screen", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = { com.hinterlay.app.ui.components.SubtleButton("Cancel", onClick = { showClockApply = false }) },
+        )
     }
 
     if (exportVisible && export != ExportState.Idle) {
@@ -706,6 +773,8 @@ private fun EditorCanvas(
     fxSource: Bitmap?, // the photo with the photo tools applied (same size as source), null when none are used
     fxForeground: Bitmap?,
     showOriginal: Boolean, // true while the compare button is held: draw the untouched photo
+    clock: com.hinterlay.app.wallpaper.DepthClockConfig? = null, // depth-clock mode: live clock behind the subject
+    clockMillis: Long = 0L, // ticking time for the clock preview (reading it here redraws each second)
     tiltX: Float, // phone tilt for 3D text looks (0 when none is in use)
     tiltY: Float,
     scanPoses: List<com.hinterlay.app.camera.FacePose>?, // faces to draw the scan mesh on while a mask is being chosen
@@ -875,7 +944,10 @@ private fun EditorCanvas(
             nc.clipRect(0f, 0f, iw, ih)
             Compositor.setLiveTilt(tiltX, tiltY)
             if (showOriginal) nc.drawBitmap(source, 0f, 0f, null)
-            else Compositor.render(nc, fxSource ?: source, if (fxSource != null) fxForeground ?: foreground else foreground, layers, subjectEdit, adjust)
+            else Compositor.render(
+                nc, fxSource ?: source, if (fxSource != null) fxForeground ?: foreground else foreground, layers, subjectEdit, adjust,
+                clock, if (clock != null) java.util.Calendar.getInstance().apply { timeInMillis = clockMillis } else null,
+            )
             layers.firstOrNull { it.id == selectedId && it.visible }?.let {
                 Compositor.drawSelection(nc, it, source.width, source.height, selectionColor, 1.5f * density / (s * viewZoom))
             }
