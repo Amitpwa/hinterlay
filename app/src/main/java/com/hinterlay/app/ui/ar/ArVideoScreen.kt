@@ -199,6 +199,9 @@ private fun ArContent(onBack: () -> Unit) {
                 config.depthMode =
                     if (session.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) Config.DepthMode.AUTOMATIC
                     else Config.DepthMode.DISABLED
+                // Instant Placement: a tap can place right away (estimated depth), refining as
+                // tracking improves — robust in poor light / before a plane has converged.
+                config.instantPlacementMode = Config.InstantPlacementMode.LOCAL_Y_UP
                 // Environmental HDR → Filament IBL (reflection cubemap + ambient SH + main light).
                 config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
             },
@@ -206,16 +209,20 @@ private fun ArContent(onBack: () -> Unit) {
             onSessionUpdated = { _, updatedFrame -> frame = updatedFrame },
             onGestureListener = rememberOnGestureListener(
                 onSingleTapConfirmed = { motionEvent, node ->
-                    // Tap empty space on a tracked surface to place / move the anchor. Taps that land
-                    // on the object itself (node != null) are left for the editable drag/scale/rotate.
+                    // Tap empty space to place / move the anchor. Taps that land on the object itself
+                    // (node != null) are left for the editable drag/scale/rotate.
                     if (node == null) {
-                        frame?.hitTest(motionEvent.x, motionEvent.y)
-                            ?.firstOrNull { it.isValid(depthPoint = false, point = false) }
-                            ?.createAnchorOrNull()
-                            ?.let { newAnchor ->
+                        frame?.let { f ->
+                            // Prefer a real tracked surface; fall back to Instant Placement (~2 m) so
+                            // a tap still places when no plane has converged (e.g. dim room).
+                            val hit = f.hitTest(motionEvent.x, motionEvent.y)
+                                .firstOrNull { it.isValid(depthPoint = false, point = false) }
+                                ?: f.hitTestInstantPlacement(motionEvent.x, motionEvent.y, 2f).firstOrNull()
+                            hit?.createAnchorOrNull()?.let { newAnchor ->
                                 anchor?.detach()
                                 anchor = newAnchor
                             }
+                        }
                     }
                 },
             ),
@@ -275,7 +282,7 @@ private fun ArContent(onBack: () -> Unit) {
         }
 
         Column(
-            modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(bottom = 18.dp)
+            modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(bottom = 40.dp)
                 .align(Alignment.BottomCenter),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
