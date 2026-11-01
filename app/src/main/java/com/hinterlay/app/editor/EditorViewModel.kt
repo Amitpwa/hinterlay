@@ -129,8 +129,17 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
     private val _exportVisible = MutableStateFlow(false)
     val exportVisible: StateFlow<Boolean> = _exportVisible.asStateFlow()
 
+    /**
+     * One-shot intents (set just before [load]) that change how the next load resolves, so a
+     * repeat of the same uri must still re-run instead of hitting the early-return in [load].
+     * Returns true when at least one such intent is pending.
+     */
+    private fun hasPendingLoadIntent(): Boolean =
+        pendingClock || pendingRestore != null || pendingForeground != null ||
+            pendingSubjectMask != null || pendingPreset != null
+
     fun load(uri: Uri) {
-        if (uri == loadedUri) return
+        if (uri == loadedUri && !hasPendingLoadIntent()) return
         loadedUri = uri
         loadJob?.cancel()
         nextId = 1L
@@ -1211,6 +1220,7 @@ class EditorViewModel(app: Application) : AndroidViewModel(app) {
         loadJob?.cancel()
         cancelExport()
         loadedUri = null
+        pendingClock = false
         startAdShownFor = null
         _state.value = EditorUiState()
     }
