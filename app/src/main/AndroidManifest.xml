@@ -18,6 +18,9 @@
 
     <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- ARCore (real-world video) is OPTIONAL: the app installs and runs on devices without AR,
+         and the AR screen gates itself on ArCoreApk.checkAvailability(). -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
     <!-- Camera: asked only when the user opens the camera. Location (approximate): only to stamp a place name on a photo. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
@@ -44,6 +47,10 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="${admobAppId}" />
+
+        <!-- ARCore marked "optional": Google Play Services for AR is downloaded on demand on
+             supported devices; unsupported devices still install. -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
         <meta-data
             android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION"
             android:value="true" />
