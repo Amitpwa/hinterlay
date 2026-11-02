@@ -42,6 +42,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -49,7 +50,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.ImageShader
+import androidx.compose.ui.graphics.ShaderBrush
+import androidx.compose.ui.graphics.TileMode
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -87,12 +94,21 @@ private data class ArItem(
     val asset: String? = null,
     /** Target size in metres (longest edge) for a model. */
     val scaleToUnits: Float = 0.3f,
+    /** Named locomotion clip to loop (animated models); null = play the model's first/only clip. */
+    val animationClip: String? = null,
+    /** True for rigged/animated models. */
+    val animated: Boolean = false,
     /** Required visible credit for CC-BY assets; null for CC0 / on-brand content. */
     val attribution: String? = null,
 )
 
-// Real CC0 / CC-BY PBR models (see assets/models/CREDITS.txt) + Hinterlay's own 3D text.
+// Animated creatures first (echo the Simulon mammoth + caveman), then static PBR props, then 3D text.
+// See assets/models/CREDITS.txt for sources + licences.
 private val arItems = listOf(
+    ArItem("Fox", ArKind.Model, "models/fox.glb", scaleToUnits = 0.5f, animationClip = "Walk", animated = true,
+        attribution = "Fox by PixelMannen (CC0) + @tomkranis (CC BY 4.0)"),
+    ArItem("Figure", ArKind.Model, "models/walking_figure.glb", scaleToUnits = 0.6f, animated = true,
+        attribution = "RiggedFigure © Cesium, CC BY 4.0"),
     ArItem("Toy car", ArKind.Model, "models/toy_car.glb", scaleToUnits = 0.3f),
     ArItem("Lamp", ArKind.Model, "models/iridescent_lamp.glb", scaleToUnits = 0.3f,
         attribution = "IridescenceLamp © 2022 Wayfair, CC BY 4.0"),
@@ -181,6 +197,22 @@ private fun ArContent(onBack: () -> Unit) {
 
     DisposableEffect(Unit) { onDispose { anchor?.detach() } }
 
+    // Filament fidelity levers that are safe on the AR passthrough view: screen-space ambient
+    // occlusion (grounds CGI into contact with surfaces) and FXAA (smooths CGI edges so they blend
+    // with the camera feed). Guarded — a renderer quirk must never take down the scene. ACES
+    // tonemapping + bloom are intentionally NOT applied here: they'd also re-grade the camera feed.
+    LaunchedEffect(view) {
+        runCatching {
+            view.setAntiAliasing(com.google.android.filament.View.AntiAliasing.FXAA)
+            view.setAmbientOcclusionOptions(
+                com.google.android.filament.View.AmbientOcclusionOptions().apply { enabled = true },
+            )
+        }
+    }
+
+    // A faint, static film-grain texture reused for the blend overlay (see below).
+    val grain = remember { makeGrain(96) }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         ARScene(
             modifier = Modifier.fillMaxSize(),
@@ -242,6 +274,11 @@ private fun ArContent(onBack: () -> Unit) {
                                 ModelNode(
                                     modelInstance = it,
                                     scaleToUnits = item.scaleToUnits,
+                                    // Loop the named locomotion clip (Fox "Walk"); for a rigged model
+                                    // with a single/unnamed clip, autoAnimate plays it.
+                                    autoAnimate = item.animated && item.animationClip == null,
+                                    animationName = item.animationClip,
+                                    animationLoop = true,
                                     isEditable = true,
                                     apply = { editableScaleRange = 0.1f..1.0f },
                                 )
@@ -262,6 +299,15 @@ private fun ArContent(onBack: () -> Unit) {
                 }
             }
         }
+
+        // Film-grain overlay over the whole frame (camera + CGI) — a subtle shared texture helps the
+        // rendered models sit in the photographed scene instead of looking pasted on. Very low alpha.
+        Box(
+            Modifier.fillMaxSize().drawWithCache {
+                val brush = ShaderBrush(ImageShader(grain, TileMode.Repeated, TileMode.Repeated))
+                onDrawBehind { drawRect(brush, alpha = 0.05f) }
+            },
+        )
 
         // ── Minimal black/white overlay (kept legible over live camera) ──────────────────────────
 
@@ -305,6 +351,18 @@ private fun ArContent(onBack: () -> Unit) {
             }
         }
     }
+}
+
+/** A small tileable grey-noise bitmap used as a film-grain overlay. Built once. */
+private fun makeGrain(size: Int): ImageBitmap {
+    val px = IntArray(size * size)
+    val rnd = java.util.Random(7)
+    for (i in px.indices) {
+        val v = rnd.nextInt(256)
+        px[i] = (0xFF shl 24) or (v shl 16) or (v shl 8) or v
+    }
+    return android.graphics.Bitmap.createBitmap(px, size, size, android.graphics.Bitmap.Config.ARGB_8888)
+        .asImageBitmap()
 }
 
 @Composable
