@@ -17,7 +17,12 @@ package com.hinterlay.app.ui.ar
 // ArCoreApk availability below.
 
 import android.Manifest
+import android.app.Activity
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.media.projection.MediaProjectionManager
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -26,6 +31,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -35,6 +41,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.FiberManualRecord
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.outlined.Videocam
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -66,6 +76,7 @@ import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.TrackingFailureReason
+import com.hinterlay.app.export.Exporter
 import com.hinterlay.app.ui.components.PrimaryButton
 import com.hinterlay.app.ui.components.SecondaryButton
 import io.github.sceneview.ar.ARScene
@@ -213,6 +224,59 @@ private fun ArContent(onBack: () -> Unit) {
     // A faint, static film-grain texture reused for the blend overlay (see below).
     val grain = remember { makeGrain(96) }
 
+    // ── Recording (MediaProjection screen capture) ───────────────────────────────────────────────
+    val context = LocalContext.current
+    val recording by ScreenRecordService.recording.collectAsState()
+    val lastResult by ScreenRecordService.lastResult.collectAsState()
+    // User grants screen capture each time; on OK we hand the token to the foreground service.
+    val captureLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            ContextCompat.startForegroundService(
+                context,
+                Intent(context, ScreenRecordService::class.java).apply {
+                    action = ScreenRecordService.ACTION_START
+                    putExtra(ScreenRecordService.EXTRA_RESULT_CODE, result.resultCode)
+                    putExtra(ScreenRecordService.EXTRA_DATA, result.data)
+                },
+            )
+        } else {
+            Toast.makeText(context, "Recording needs screen-capture permission", Toast.LENGTH_SHORT).show()
+        }
+    }
+    val startRecording: () -> Unit = {
+        val mpm = context.getSystemService(Context.MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        captureLauncher.launch(mpm.createScreenCaptureIntent())
+    }
+    val stopRecording: () -> Unit = {
+        context.startService(
+            Intent(context, ScreenRecordService::class.java).apply { action = ScreenRecordService.ACTION_STOP },
+        )
+    }
+    // When a recording finishes, tell the user and offer to share it.
+    LaunchedEffect(lastResult) {
+        lastResult?.let { res ->
+            if (res.file != null) {
+                Toast.makeText(
+                    context,
+                    if (res.savedToGallery) "Saved to Movies/Hinterlay" else "Video saved",
+                    Toast.LENGTH_SHORT,
+                ).show()
+                runCatching {
+                    context.startActivity(
+                        Intent.createChooser(Exporter.shareVideoIntent(context, res.file), "Share AR video"),
+                    )
+                }
+            } else {
+                Toast.makeText(context, "Couldn't record on this device", Toast.LENGTH_LONG).show()
+            }
+            ScreenRecordService.lastResult.value = null
+        }
+    }
+    // Stop recording if the user leaves the screen.
+    DisposableEffect(Unit) { onDispose { if (ScreenRecordService.recording.value) stopRecording() } }
+
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         ARScene(
             modifier = Modifier.fillMaxSize(),
@@ -311,42 +375,71 @@ private fun ArContent(onBack: () -> Unit) {
 
         // ── Minimal black/white overlay (kept legible over live camera) ──────────────────────────
 
-        IconButton(
-            onClick = onBack,
-            modifier = Modifier.statusBarsPadding().padding(8.dp).align(Alignment.TopStart),
-        ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
-        }
-
-        val status = trackingFailure?.getDescription(LocalContext.current)
-            ?: if (anchor == null) "Move your phone, then tap a surface"
-            else "Drag to move · pinch to scale · twist to rotate"
-        if (status.isNotBlank()) {
-            Pill(status, Modifier.statusBarsPadding().padding(top = 12.dp).align(Alignment.TopCenter))
-        }
-
-        Column(
-            modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(bottom = 40.dp)
-                .align(Alignment.BottomCenter),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            // Honest lighting note + CC-BY attribution, shown once something is placed.
-            if (anchor != null) {
-                val note = arItems[selected].attribution
-                    ?.let { "Lit by your room (ARCore HDR — a close match, not film-grade) · $it" }
-                    ?: "Lit by your room (ARCore HDR) — a close match, not film-grade relighting"
-                Pill(note, textAlpha = 0.85f)
-                SecondaryButton(text = "Remove", onClick = { anchor?.detach(); anchor = null })
+        if (recording) {
+            // While recording, strip the chrome so the capture is just the scene — leave only a
+            // small, tappable "stop" pill at the top.
+            Surface(
+                onClick = stopRecording,
+                modifier = Modifier.statusBarsPadding().padding(top = 12.dp).align(Alignment.TopCenter),
+                color = Color.Black.copy(alpha = 0.55f),
+                contentColor = Color.White,
+                shape = RoundedCornerShape(50),
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
+                ) {
+                    Icon(Icons.Filled.FiberManualRecord, null, tint = Color(0xFFE53935), modifier = Modifier.size(14.dp))
+                    Text("Recording · tap to stop", style = MaterialTheme.typography.labelMedium)
+                    Icon(Icons.Filled.Stop, null, modifier = Modifier.size(16.dp))
+                }
+            }
+        } else {
+            IconButton(
+                onClick = onBack,
+                modifier = Modifier.statusBarsPadding().padding(8.dp).align(Alignment.TopStart),
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back", tint = Color.White)
             }
 
-            // Content picker — translucent pills for contrast over the camera feed.
-            Row(
-                modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            val status = trackingFailure?.getDescription(LocalContext.current)
+                ?: if (anchor == null) "Move your phone, then tap a surface"
+                else "Drag to move · pinch to scale · twist to rotate"
+            if (status.isNotBlank()) {
+                Pill(status, Modifier.statusBarsPadding().padding(top = 12.dp).align(Alignment.TopCenter))
+            }
+
+            Column(
+                modifier = Modifier.navigationBarsPadding().fillMaxWidth().padding(bottom = 40.dp)
+                    .align(Alignment.BottomCenter),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                arItems.forEachIndexed { i, item ->
-                    PickPill(label = item.label, selected = i == selected, onClick = { selected = i })
+                // Honest lighting note + CC-BY attribution, shown once something is placed.
+                if (anchor != null) {
+                    val note = arItems[selected].attribution
+                        ?.let { "Lit by your room (ARCore HDR — a close match, not film-grade) · $it" }
+                        ?: "Lit by your room (ARCore HDR) — a close match, not film-grade relighting"
+                    Pill(note, textAlpha = 0.85f)
+                }
+
+                // Record + Remove.
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PrimaryButton("Record", onClick = { startRecording() }, icon = Icons.Outlined.Videocam)
+                    if (anchor != null) {
+                        SecondaryButton(text = "Remove", onClick = { anchor?.detach(); anchor = null })
+                    }
+                }
+
+                // Content picker — translucent pills for contrast over the camera feed.
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    arItems.forEachIndexed { i, item ->
+                        PickPill(label = item.label, selected = i == selected, onClick = { selected = i })
+                    }
                 }
             }
         }

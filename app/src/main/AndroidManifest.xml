@@ -25,6 +25,10 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 
+    <!-- Recording the AR scene to video via MediaProjection screen capture (user consents each time). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
     <queries>
         <!-- Lets the "Share to Story" button detect Instagram (package visibility, Android 11+). -->
         <package android:name="com.instagram.android" />
@@ -70,6 +74,12 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="updates" />
+        <!-- Screen-capture recorder for the real-world AR video. -->
+        <service
+            android:name=".ui.ar.ScreenRecordService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
         <service
             android:name=".cloud.HinterlayMessagingService"
             android:exported="false">
