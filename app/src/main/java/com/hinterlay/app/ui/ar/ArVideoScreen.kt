@@ -76,7 +76,6 @@ import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.TrackingFailureReason
-import com.hinterlay.app.export.Exporter
 import com.hinterlay.app.ui.components.PrimaryButton
 import com.hinterlay.app.ui.components.SecondaryButton
 import io.github.sceneview.ar.ARScene
@@ -258,16 +257,12 @@ private fun ArContent(onBack: () -> Unit) {
     LaunchedEffect(lastResult) {
         lastResult?.let { res ->
             if (res.file != null) {
+                // Match the app's other video exports: save + a quiet toast (no forced share sheet).
                 Toast.makeText(
                     context,
                     if (res.savedToGallery) "Saved to Movies/Hinterlay" else "Video saved",
                     Toast.LENGTH_SHORT,
                 ).show()
-                runCatching {
-                    context.startActivity(
-                        Intent.createChooser(Exporter.shareVideoIntent(context, res.file), "Share AR video"),
-                    )
-                }
             } else {
                 Toast.makeText(context, "Couldn't record on this device", Toast.LENGTH_LONG).show()
             }
