@@ -75,3 +75,31 @@ fallback path for non-AR phones (and a faster first win if Part B's AR proves to
 ## Suggested order
 1. Part A radial menu. 2. 2D "behind a moving subject" video (fallback, broad device support).
 3. Part B AR phases 1→4. Re-evaluate after Phase 1 whether the AR fidelity justifies the size/complexity.
+
+## Progress (branch ashutosh/jovial-tu-162436, 2026-11-02)
+Done (built; parts verified on the Moto G85 by sight — see session notes):
+- AR foundation: `ui/ar/ArVideoScreen.kt` on SceneView 3.6.0 + ARCore 1.53.0 — plane detection,
+  Environmental-HDR light estimation (→ Filament IBL), Depth-API occlusion, tap-to-place with
+  **Instant Placement** fallback, editable drag/pinch/rotate. Reached in-app from the radial Create
+  menu's **Video** spoke (ARCore-gated). Device + camera gating with honest, no-overpromise copy.
+- Simulon-style content: **animated** CC0/CC-BY glTF models (Fox walk, RiggedFigure) alongside static
+  PBR props + Hinterlay 3D text; models bundled in `assets/models` (CREDITS.txt). Fidelity levers:
+  SSAO + FXAA on the view, film-grain blend overlay, soft contact-shadow disc.
+
+Honest ceiling: ARCore Environmental HDR ≈ a close real-time approximation, **not** Simulon's offline
+neural relight. The UI says so.
+
+### Next
+- **Phase 2 — deliver the video (the user's actual ask):** record the live AR scene to MP4. Capture the
+  Filament render + camera feed (MediaCodec input surface via Filament readback, or MediaRecorder on the
+  surface), with a Start/Stop control (`HairlineProgress`) and save beside other exports → existing
+  Story/WhatsApp share. Reuse `export/VideoEncoder.kt` where possible.
+- **Phase 1 fidelity polish:** replace the contact-shadow disc with a true **transparent shadow-catcher
+  plane** (needs a custom Filament `shadowMultiplier` material / .filamat) and real soft/PCF shadows from
+  the HDR main light. Bloom/ACES only if applied to the CGI pass alone, not the camera passthrough.
+- **Phase 3 — STRETCH (document, don't build yet): offline higher-quality re-render for export.** Record
+  camera frames + 6DoF poses + depth + light estimate during capture, then re-render the virtual layer
+  slower-than-real-time with a larger shadow/AA/sample budget and composite over the saved frames. This is
+  the closest honest on-device approach to Simulon's look (quality decoupled from the 30 fps live budget).
+  Costs: a frame/pose/light recorder, an offline render pass, and a compositor; big effort, do only after
+  Phases 1–2 are solid.
