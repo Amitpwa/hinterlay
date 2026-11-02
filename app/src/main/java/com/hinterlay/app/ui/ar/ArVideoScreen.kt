@@ -269,8 +269,22 @@ private fun ArContent(onBack: () -> Unit) {
             ScreenRecordService.lastResult.value = null
         }
     }
-    // Stop recording if the user leaves the screen.
-    DisposableEffect(Unit) { onDispose { if (ScreenRecordService.recording.value) stopRecording() } }
+    // Stop recording if the user leaves the screen or backgrounds the app. ON_STOP fires when the
+    // app is no longer visible (e.g. the user switches to another app), so an entire-screen capture
+    // can never keep recording other apps. onDispose covers navigating away within Hinterlay.
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP && ScreenRecordService.recording.value) {
+                stopRecording()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            if (ScreenRecordService.recording.value) stopRecording()
+        }
+    }
 
     Box(Modifier.fillMaxSize().background(Color.Black)) {
         ARScene(
