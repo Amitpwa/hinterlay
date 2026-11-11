@@ -41,8 +41,8 @@ android {
         applicationId = "com.hinterlay.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.1"
 
         buildConfigField("String", "FACEBOOK_APP_ID", "\"${prop("FACEBOOK_APP_ID", "")}\"")
         // Comma-separated AdMob test device ids (printed in logcat the first time ads load). Blank = none.
