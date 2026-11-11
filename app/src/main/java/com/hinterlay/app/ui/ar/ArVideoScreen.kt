@@ -76,6 +76,7 @@ import com.google.ar.core.ArCoreApk
 import com.google.ar.core.Config
 import com.google.ar.core.Frame
 import com.google.ar.core.TrackingFailureReason
+import com.hinterlay.app.export.Exporter
 import com.hinterlay.app.ui.components.PrimaryButton
 import com.hinterlay.app.ui.components.SecondaryButton
 import io.github.sceneview.ar.ARScene
@@ -104,8 +105,8 @@ private data class ArItem(
     val asset: String? = null,
     /** Target size in metres (longest edge) for a model. */
     val scaleToUnits: Float = 0.3f,
-    /** Named locomotion clip to loop (animated models); null = play the model's first/only clip. */
-    val animationClip: String? = null,
+    /** Named clips the user can switch between (first is the default); empty = play the only clip. */
+    val clips: List<String> = emptyList(),
     /** True for rigged/animated models. */
     val animated: Boolean = false,
     /** Required visible credit for CC-BY assets; null for CC0 / on-brand content. */
@@ -115,7 +116,7 @@ private data class ArItem(
 // Animated creatures first (echo the Simulon mammoth + caveman), then static PBR props, then 3D text.
 // See assets/models/CREDITS.txt for sources + licences.
 private val arItems = listOf(
-    ArItem("Fox", ArKind.Model, "models/fox.glb", scaleToUnits = 0.5f, animationClip = "Walk", animated = true,
+    ArItem("Fox", ArKind.Model, "models/fox.glb", scaleToUnits = 0.5f, clips = listOf("Walk", "Run", "Survey"), animated = true,
         attribution = "Fox by PixelMannen (CC0) + @tomkranis (CC BY 4.0)"),
     ArItem("Figure", ArKind.Model, "models/walking_figure.glb", scaleToUnits = 0.6f, animated = true,
         attribution = "RiggedFigure © Cesium, CC BY 4.0"),
@@ -129,7 +130,7 @@ private val arItems = listOf(
 /**
  * Real-world AR video screen. Tap a surface to place the selected 3D content, lit by the real scene.
  *
- * @param onBack leave the screen (navigation is owned elsewhere — see TODO(route) above).
+ * @param onBack leave the screen (MainActivity returns to Home).
  */
 @Composable
 fun ArVideoScreen(onBack: () -> Unit) {
@@ -191,16 +192,21 @@ private fun ArContent(onBack: () -> Unit) {
     // Occlusion off by default in ARCameraStream; turn it on so real objects can hide the virtual one.
     val cameraStream = rememberARCameraStream(materialLoader).apply { isDepthOcclusionEnabled = true }
 
-    // Soft contact-shadow material: a flat translucent black disc placed on the surface under the
-    // object to ground it. Not a true cast shadow (there's no real geometry to receive one in AR) —
-    // a pragmatic grounding cue. The real relighting comes from Environmental HDR below.
-    val shadowMaterial = remember(materialLoader) {
-        materialLoader.createColorInstance(
-            color = Color(0f, 0f, 0f, 0.3f), metallic = 0f, roughness = 1f, reflectance = 0f,
-        )
+    // Soft contact shadow: a few stacked translucent discs under the object, each a little smaller,
+    // so the darkness builds toward the centre and fades at the rim. Not a true cast shadow (there's
+    // no real geometry to receive one in AR) — a grounding cue. Relighting comes from HDR below.
+    val shadowRings = remember { contactShadowRings() }
+    val shadowMaterials = remember(materialLoader) {
+        shadowRings.map { (_, alpha) ->
+            materialLoader.createColorInstance(
+                color = Color(0f, 0f, 0f, alpha), metallic = 0f, roughness = 1f, reflectance = 0f,
+            )
+        }
     }
 
     var selected by remember { mutableIntStateOf(0) }
+    // Which animation clip is playing for the selected model (resets when the model changes).
+    var clipIndex by remember(selected) { mutableIntStateOf(0) }
     var frame by remember { mutableStateOf<Frame?>(null) }
     var anchor by remember { mutableStateOf<Anchor?>(null) }
     var trackingFailure by remember { mutableStateOf<TrackingFailureReason?>(null) }
@@ -253,10 +259,23 @@ private fun ArContent(onBack: () -> Unit) {
             Intent(context, ScreenRecordService::class.java).apply { action = ScreenRecordService.ACTION_STOP },
         )
     }
+    // Elapsed time for the stop pill, plus a safety cap so a forgotten recording can't run on.
+    var recSeconds by remember { mutableIntStateOf(0) }
+    LaunchedEffect(recording) {
+        recSeconds = 0
+        while (recording) {
+            kotlinx.coroutines.delay(1000)
+            recSeconds++
+            if (recSeconds >= MAX_RECORD_SECONDS) stopRecording()
+        }
+    }
+    // The last finished clip, kept so it can be shared from here.
+    var lastClip by remember { mutableStateOf<java.io.File?>(null) }
     // When a recording finishes, tell the user and offer to share it.
     LaunchedEffect(lastResult) {
         lastResult?.let { res ->
             if (res.file != null) {
+                lastClip = res.file
                 // Match the app's other video exports: save + a quiet toast (no forced share sheet).
                 Toast.makeText(
                     context,
@@ -296,7 +315,9 @@ private fun ArContent(onBack: () -> Unit) {
             collisionSystem = collisionSystem,
             cameraNode = cameraNode,
             cameraStream = cameraStream,
-            planeRenderer = true,
+            // The dot grid is a placement aid: hide it once something is placed and while recording,
+            // so neither the view nor the video shows it.
+            planeRenderer = anchor == null && !recording,
             sessionConfiguration = { session, config ->
                 config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
                 config.depthMode =
@@ -333,13 +354,17 @@ private fun ArContent(onBack: () -> Unit) {
             anchor?.let { placed ->
                 AnchorNode(anchor = placed) {
                     val item = arItems[selected]
-                    // Grounding contact shadow (flat disc on the surface).
-                    CylinderNode(
-                        radius = 0.09f,
-                        height = 0.002f,
-                        materialInstance = shadowMaterial,
-                        position = Position(y = 0.001f),
-                    )
+                    // Grounding contact shadow, sized to the content (see contactShadowRings).
+                    val shadowRadius = if (item.kind == ArKind.Model) item.scaleToUnits * 0.45f else 0.12f
+                    shadowRings.forEachIndexed { i, (fraction, _) ->
+                        CylinderNode(
+                            radius = shadowRadius * fraction,
+                            height = 0.001f,
+                            materialInstance = shadowMaterials[i],
+                            // Stack the discs a hair apart so they don't z-fight.
+                            position = Position(y = 0.001f + i * 0.0006f),
+                        )
+                    }
                     when (item.kind) {
                         ArKind.Model -> {
                             val instance = rememberModelInstance(modelLoader, item.asset!!)
@@ -347,13 +372,16 @@ private fun ArContent(onBack: () -> Unit) {
                                 ModelNode(
                                     modelInstance = it,
                                     scaleToUnits = item.scaleToUnits,
-                                    // Loop the named locomotion clip (Fox "Walk"); for a rigged model
-                                    // with a single/unnamed clip, autoAnimate plays it.
-                                    autoAnimate = item.animated && item.animationClip == null,
-                                    animationName = item.animationClip,
+                                    // Loop the chosen named clip (Fox: Walk / Run / Survey); for a rigged
+                                    // model with a single unnamed clip, autoAnimate plays it.
+                                    autoAnimate = item.animated && item.clips.isEmpty(),
+                                    animationName = item.clips.getOrNull(clipIndex),
                                     animationLoop = true,
                                     isEditable = true,
-                                    apply = { editableScaleRange = 0.1f..1.0f },
+                                    // The pinch range is in the node's own scale, and scaleToUnits
+                                    // leaves that anywhere from ~0.005 to ~1 depending on how the mesh
+                                    // was authored — so make the limits relative to it.
+                                    apply = { editableScaleRange = (scale.x * 0.4f)..(scale.x * 3f) },
                                 )
                             }
                         }
@@ -400,7 +428,10 @@ private fun ArContent(onBack: () -> Unit) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 9.dp),
                 ) {
                     Icon(Icons.Filled.FiberManualRecord, null, tint = Color(0xFFE53935), modifier = Modifier.size(14.dp))
-                    Text("Recording · tap to stop", style = MaterialTheme.typography.labelMedium)
+                    Text(
+                        "%d:%02d · tap to stop".format(recSeconds / 60, recSeconds % 60),
+                        style = MaterialTheme.typography.labelMedium,
+                    )
                     Icon(Icons.Filled.Stop, null, modifier = Modifier.size(16.dp))
                 }
             }
@@ -414,7 +445,7 @@ private fun ArContent(onBack: () -> Unit) {
 
             val status = trackingFailure?.getDescription(LocalContext.current)
                 ?: if (anchor == null) "Move your phone, then tap a surface"
-                else "Drag to move · pinch to scale · twist to rotate"
+                else "Tap to move · pinch to scale · twist to rotate"
             if (status.isNotBlank()) {
                 Pill(status, Modifier.statusBarsPadding().padding(top = 12.dp).align(Alignment.TopCenter))
             }
@@ -433,11 +464,33 @@ private fun ArContent(onBack: () -> Unit) {
                     Pill(note, textAlpha = 0.85f)
                 }
 
-                // Record + Remove.
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                // Animation picker for models with more than one clip (Fox: Walk / Run / Survey).
+                val clips = arItems[selected].clips
+                if (anchor != null && clips.size > 1) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        clips.forEachIndexed { i, name ->
+                            PickPill(label = name, selected = i == clipIndex, onClick = { clipIndex = i })
+                        }
+                    }
+                }
+
+                // Record, share the last clip, remove.
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     PrimaryButton("Record", onClick = { startRecording() }, icon = Icons.Outlined.Videocam)
+                    lastClip?.let { clip ->
+                        SecondaryButton(text = "Share", contentColor = Color.White, onClick = {
+                            runCatching {
+                                context.startActivity(
+                                    Intent.createChooser(Exporter.shareVideoIntent(context, clip), "Share AR video"),
+                                )
+                            }
+                        })
+                    }
                     if (anchor != null) {
-                        SecondaryButton(text = "Remove", onClick = { anchor?.detach(); anchor = null })
+                        SecondaryButton(text = "Remove", contentColor = Color.White, onClick = { anchor?.detach(); anchor = null })
                     }
                 }
 
@@ -454,6 +507,18 @@ private fun ArContent(onBack: () -> Unit) {
         }
     }
 }
+
+/** Longest a single recording may run before it stops itself. */
+private const val MAX_RECORD_SECONDS = 60
+
+/**
+ * The contact shadow's falloff, as stacked discs: each entry is (radius as a fraction of the shadow's
+ * full radius, alpha of that disc), largest first. Where discs overlap their alphas add up, so the
+ * centre ends up darkest and the rim faintest.
+ */
+private fun contactShadowRings(): List<Pair<Float, Float>> =
+    // TODO(human): tune this falloff — see the Learn by Doing note. These values are a plain default.
+    listOf(1.0f to 0.07f, 0.8f to 0.08f, 0.6f to 0.09f, 0.4f to 0.10f)
 
 /** A small tileable grey-noise bitmap used as a film-grain overlay. Built once. */
 private fun makeGrain(size: Int): ImageBitmap {
