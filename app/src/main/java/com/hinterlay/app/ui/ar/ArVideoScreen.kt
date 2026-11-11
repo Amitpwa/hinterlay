@@ -337,11 +337,14 @@ private fun ArContent(onBack: () -> Unit) {
                     // (node != null) are left for the editable drag/scale/rotate.
                     if (node == null) {
                         frame?.let { f ->
-                            // Prefer a real tracked surface; fall back to Instant Placement (~2 m) so
-                            // a tap still places when no plane has converged (e.g. dim room).
-                            val hit = f.hitTest(motionEvent.x, motionEvent.y)
-                                .firstOrNull { it.isValid(depthPoint = false, point = false) }
-                                ?: f.hitTestInstantPlacement(motionEvent.x, motionEvent.y, 2f).firstOrNull()
+                            // Prefer a tracked plane; else the depth map's real surface under the
+                            // tap; only then Instant Placement at a guessed 1 m. The depth step
+                            // matters: a guessed distance beyond the real surface puts the model
+                            // behind it, where depth occlusion hides it entirely.
+                            val hits = f.hitTest(motionEvent.x, motionEvent.y)
+                            val hit = hits.firstOrNull { it.isValid(depthPoint = false, point = false) }
+                                ?: hits.firstOrNull { it.isValid(depthPoint = true, point = false) }
+                                ?: f.hitTestInstantPlacement(motionEvent.x, motionEvent.y, 1f).firstOrNull()
                             hit?.createAnchorOrNull()?.let { newAnchor ->
                                 anchor?.detach()
                                 anchor = newAnchor
