@@ -20,6 +20,11 @@ camerax = "1.4.2"
 clarity = "3.10.0"
 mlkitFace = "16.1.7"
 mlkitFaceMesh = "16.0.0-beta3"
+# AR: SceneView 3.6.0 is the newest release built with Kotlin <= 2.2 (2.1.21), so its metadata is
+# readable by this project's Kotlin 2.2.10. 4.x needs Kotlin 2.3/2.4 (and later JVM 21 / compileSdk 37).
+# arsceneview pulls com.google.ar:core 1.53.0 transitively; we also pin it explicitly.
+sceneview = "3.6.0"
+arcore = "1.53.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -59,6 +64,10 @@ camerax-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", vers
 camerax-view = { group = "androidx.camera", name = "camera-view", version.ref = "camerax" }
 mlkit-face = { group = "com.google.mlkit", name = "face-detection", version.ref = "mlkitFace" }
 mlkit-face-mesh = { group = "com.google.mlkit", name = "face-mesh-detection", version.ref = "mlkitFaceMesh" }
+
+# AR (real-world video, Part B). arsceneview wraps ARCore + Filament with a Compose ARScene.
+arsceneview = { group = "io.github.sceneview", name = "arsceneview", version.ref = "sceneview" }
+arcore = { group = "com.google.ar", name = "core", version.ref = "arcore" }
 
 [plugins]
 google-services = { id = "com.google.gms.google-services", version.ref = "googleServices" }

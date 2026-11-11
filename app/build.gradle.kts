@@ -140,6 +140,10 @@ dependencies {
     implementation(libs.user.messaging.platform)
     implementation(libs.mlkit.subject.segmentation)
     implementation(libs.kotlinx.coroutines.play.services)
+
+    // AR real-world video (Part B). SceneView = ARCore + Filament + Compose ARScene.
+    implementation(libs.arsceneview)
+    implementation(libs.arcore)
 }
 
 // Firebase is optional: the app builds and runs without it, and cloud features switch on once

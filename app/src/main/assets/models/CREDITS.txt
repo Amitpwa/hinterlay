@@ -1,0 +1,26 @@
+3D models used in the real-world AR video feature (all cleared for commercial use).
+Source: Khronos glTF-Sample-Assets (https://github.com/KhronosGroup/glTF-Sample-Assets).
+
+toy_car.glb        - ToyCar          (c) 2020, Public.      Creative Commons Zero v1.0 (CC0) - public domain, no attribution required.
+                     https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/ToyCar
+sheen_chair.glb    - SheenChair      (c) 2020, Wayfair LLC. Creative Commons Zero v1.0 (CC0) - public domain, no attribution required.
+                     https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/SheenChair
+iridescent_lamp.glb- IridescenceLamp (c) 2022, Wayfair LLC. Creative Commons Attribution 4.0 International (CC BY 4.0) - attribution REQUIRED.
+                     https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/IridescenceLamp
+                     Attribution shown in-app on the AR screen / about: "IridescenceLamp (c) 2022 Wayfair LLC, CC BY 4.0".
+
+Animated models (real-time AR, play a looping locomotion clip):
+fox.glb            - Fox             Mesh (c) PixelMannen, Creative Commons Zero (CC0). Rig + animation
+                     (c) @tomkranis, Creative Commons Attribution 4.0 (CC BY 4.0) - attribution REQUIRED.
+                     Clips: Survey / Walk / Run. Credit in-app: "Fox by PixelMannen (CC0) + @tomkranis (CC BY 4.0)".
+                     https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/Fox
+walking_figure.glb - RiggedFigure    (c) 2017, Cesium. Creative Commons Attribution 4.0 (CC BY 4.0) - attribution REQUIRED.
+                     Animated walk cycle. Credit in-app: "RiggedFigure (c) Cesium, CC BY 4.0".
+                     https://github.com/KhronosGroup/glTF-Sample-Assets/tree/main/Models/RiggedFigure
+
+Notes:
+- CC0 models (toy_car, sheen_chair) need no attribution, but are credited here for provenance.
+- The CC BY 4.0 model (iridescent_lamp) REQUIRES visible attribution wherever it ships. The AR screen
+  surfaces a small credit line; keep that if this model stays in the build.
+- Deliberately NOT used: DamagedHelmet - its original mesh carries a CC BY-NC (NonCommercial) credit,
+  which is incompatible with this commercial (ad-supported / paid) app.

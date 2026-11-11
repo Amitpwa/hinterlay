@@ -18,9 +18,16 @@
 
     <uses-feature android:name="android.software.live_wallpaper" android:required="false" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- ARCore (real-world video) is OPTIONAL: the app installs and runs on devices without AR,
+         and the AR screen gates itself on ArCoreApk.checkAvailability(). -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
     <!-- Camera: asked only when the user opens the camera. Location (approximate): only to stamp a place name on a photo. -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
+    <!-- Recording the AR scene to video via MediaProjection screen capture (user consents each time). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
 
     <queries>
         <!-- Lets the "Share to Story" button detect Instagram (package visibility, Android 11+). -->
@@ -44,6 +51,10 @@
         <meta-data
             android:name="com.google.android.gms.ads.APPLICATION_ID"
             android:value="${admobAppId}" />
+
+        <!-- ARCore marked "optional": Google Play Services for AR is downloaded on demand on
+             supported devices; unsupported devices still install. -->
+        <meta-data android:name="com.google.ar.core" android:value="optional" />
         <meta-data
             android:name="com.google.android.gms.ads.flag.OPTIMIZE_INITIALIZATION"
             android:value="true" />
@@ -63,6 +74,12 @@
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
             android:value="updates" />
+        <!-- Screen-capture recorder for the real-world AR video. -->
+        <service
+            android:name=".ui.ar.ScreenRecordService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
         <service
             android:name=".cloud.HinterlayMessagingService"
             android:exported="false">
